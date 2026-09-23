@@ -405,7 +405,7 @@ export default function DentistServices() {
                     </div>
 
                     <div className="dentist-info">
-                        👩‍⚕️ Dr. Maria Santos
+                        👩‍⚕️ Dr. Jhulance Fenandez
                     </div>
                 </div>
 
