@@ -56,26 +56,22 @@ let patients = [
         service: "Dental Cleaning",
         status: "Good",
         nextVisit: "September 15, 2026",
-        notes:
-            "Patient should continue regular brushing and flossing. Schedule routine cleaning every six months.",
+        notes: "Patient should continue regular brushing and flossing. Schedule routine cleaning every six months.",
         history: [
             {
                 service: "Dental Cleaning",
                 date: "September 2, 2026",
-                description:
-                    "Routine dental cleaning and oral examination."
+                description: "Routine dental cleaning and oral examination."
             },
             {
                 service: "Dental Check-up",
                 date: "June 10, 2026",
-                description:
-                    "General dental examination. No major problems found."
+                description: "General dental examination. No major problems found."
             },
             {
                 service: "Dental Filling",
                 date: "February 15, 2026",
-                description:
-                    "Dental filling performed on affected tooth."
+                description: "Dental filling performed on affected tooth."
             }
         ]
     },
@@ -90,14 +86,12 @@ let patients = [
         service: "Dental Check-up",
         status: "Needs Follow-up",
         nextVisit: "September 18, 2026",
-        notes:
-            "Patient needs follow-up dental examination.",
+        notes: "Patient needs follow-up dental examination.",
         history: [
             {
                 service: "Dental Check-up",
                 date: "August 28, 2026",
-                description:
-                    "General dental examination."
+                description: "General dental examination."
             }
         ]
     },
@@ -112,14 +106,12 @@ let patients = [
         service: "Tooth Extraction",
         status: "Under Treatment",
         nextVisit: "September 16, 2026",
-        notes:
-            "Patient is currently under dental treatment.",
+        notes: "Patient is currently under dental treatment.",
         history: [
             {
                 service: "Tooth Extraction",
                 date: "August 25, 2026",
-                description:
-                    "Extraction consultation and treatment planning."
+                description: "Extraction consultation and treatment planning."
             }
         ]
     },
@@ -134,14 +126,12 @@ let patients = [
         service: "Dental Filling",
         status: "Good",
         nextVisit: "September 17, 2026",
-        notes:
-            "Continue regular brushing and flossing.",
+        notes: "Continue regular brushing and flossing.",
         history: [
             {
                 service: "Dental Filling",
                 date: "August 20, 2026",
-                description:
-                    "Dental filling performed."
+                description: "Dental filling performed."
             }
         ]
     },
@@ -156,14 +146,12 @@ let patients = [
         service: "Dental Cleaning",
         status: "Good",
         nextVisit: "February 18, 2027",
-        notes:
-            "Patient is in good dental condition.",
+        notes: "Patient is in good dental condition.",
         history: [
             {
                 service: "Dental Cleaning",
                 date: "August 18, 2026",
-                description:
-                    "Routine dental cleaning."
+                description: "Routine dental cleaning."
             }
         ]
     }
@@ -172,9 +160,9 @@ let patients = [
 app.get("/", (req, res) => {
     res.json({
         message: "DentalCare backend is running",
-        services: "localhost:8080/api/services",
-        appointments: "localhost:8080/api/appointment",
-        patients: "localhost:8080/api/patients"
+        services: "http://localhost:8080/api/services",
+        appointments: "http://localhost:8080/api/appointment",
+        patients: "http://localhost:8080/api/patients"
     });
 });
 
@@ -201,9 +189,12 @@ app.post("/api/services", (req, res) => {
 
     console.log("\n========================================");
     console.log("NEW SERVICE CREATED");
-    console.log("========================================");
     console.log("Service ID:", newService.id);
-    console.log("Service:", JSON.stringify(newService, null, 2));
+    console.log("Changed Data:");
+    console.log(JSON.stringify({
+        name: newService.name,
+        price: newService.price
+    }, null, 2));
     console.log("========================================\n");
 
     res.status(201).json(newService);
@@ -218,7 +209,8 @@ app.post("/api/services/restore", (req, res) => {
         });
     });
 
-    console.log("Services restored.");
+    console.log("\nServices restored.");
+    console.log("========================================\n");
 
     res.json({
         message: "Services restored",
@@ -228,7 +220,7 @@ app.post("/api/services/restore", (req, res) => {
 
 app.delete("/api/services/:id", (req, res) => {
     const index = services.findIndex(
-        service => service.id === req.params.id
+        service => String(service.id) === String(req.params.id)
     );
 
     if (index === -1) {
@@ -243,13 +235,13 @@ app.delete("/api/services/:id", (req, res) => {
 
     console.log("\n========================================");
     console.log("SERVICE DELETED");
-    console.log("========================================");
     console.log("Service ID:", deletedService.id);
     console.log("Service:", deletedService.name);
     console.log("========================================\n");
 
     res.json({
-        message: "Service deleted"
+        message: "Service deleted",
+        service: deletedService
     });
 });
 
@@ -277,8 +269,7 @@ app.post("/api/appointment", (req, res) => {
         !time
     ) {
         return res.status(400).json({
-            message:
-                "Please complete all required appointment fields"
+            message: "Please complete all required appointment fields"
         });
     }
 
@@ -298,15 +289,18 @@ app.post("/api/appointment", (req, res) => {
 
     console.log("\n========================================");
     console.log("NEW APPOINTMENT CREATED");
-    console.log("========================================");
     console.log("Appointment ID:", newAppointment.id);
     console.log("Patient ID:", newAppointment.patientId);
-    console.log("Patient:", newAppointment.patientName);
-    console.log("Service:", newAppointment.service);
-    console.log("Dentist:", newAppointment.dentist);
-    console.log("Date:", newAppointment.date);
-    console.log("Time:", newAppointment.time);
-    console.log("Status:", newAppointment.status);
+    console.log("Changed Data:");
+    console.log(JSON.stringify({
+        patientName: newAppointment.patientName,
+        service: newAppointment.service,
+        dentist: newAppointment.dentist,
+        date: newAppointment.date,
+        time: newAppointment.time,
+        notes: newAppointment.notes,
+        status: newAppointment.status
+    }, null, 2));
     console.log("========================================\n");
 
     res.status(201).json(newAppointment);
@@ -316,7 +310,7 @@ app.put("/api/appointment/:id/status", (req, res) => {
     const { status } = req.body;
 
     const appointment = appointments.find(
-        appointment => appointment.id === req.params.id
+        appointment => String(appointment.id) === String(req.params.id)
     );
 
     if (!appointment) {
@@ -338,14 +332,28 @@ app.put("/api/appointment/:id/status", (req, res) => {
         });
     }
 
+    const oldStatus = appointment.status;
+
+    if (oldStatus === status) {
+        console.log("\n========================================");
+        console.log("NO APPOINTMENT CHANGE");
+        console.log("Appointment ID:", appointment.id);
+        console.log("Patient ID:", appointment.patientId);
+        console.log("========================================\n");
+
+        return res.json(appointment);
+    }
+
     appointment.status = status;
 
     console.log("\n========================================");
-    console.log("APPOINTMENT STATUS UPDATED");
-    console.log("========================================");
+    console.log("APPOINTMENT UPDATED");
     console.log("Appointment ID:", appointment.id);
     console.log("Patient ID:", appointment.patientId);
-    console.log("New Status:", appointment.status);
+    console.log("Changed Data:");
+    console.log(JSON.stringify({
+        status: appointment.status
+    }, null, 2));
     console.log("========================================\n");
 
     res.json(appointment);
@@ -357,7 +365,7 @@ app.get("/api/patients", (req, res) => {
 
 app.get("/api/patients/:id", (req, res) => {
     const patient = patients.find(
-        patient => patient.id === req.params.id
+        patient => String(patient.id) === String(req.params.id)
     );
 
     if (!patient) {
@@ -387,8 +395,11 @@ app.put("/api/patients/:id", (req, res) => {
     const changedData = {};
 
     Object.keys(editedData).forEach(key => {
-        if (editedData[key] !== oldPatient[key]) {
-            changedData[key] = editedData[key];
+        const oldValue = oldPatient[key];
+        const newValue = editedData[key];
+
+        if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+            changedData[key] = newValue;
         }
     });
 
@@ -408,6 +419,13 @@ app.put("/api/patients/:id", (req, res) => {
                 .toUpperCase();
     }
 
+    if (
+        Object.prototype.hasOwnProperty.call(editedData, "name") &&
+        oldPatient.name !== patients[patientIndex].name
+    ) {
+        changedData.name = patients[patientIndex].name;
+    }
+
     console.log("\n========================================");
     console.log("PATIENT UPDATED");
     console.log("Patient ID:", id);
@@ -423,6 +441,60 @@ app.put("/api/patients/:id", (req, res) => {
 
     res.json({
         message: "Patient record updated successfully",
-        patient: patients[patientIndex]
+        patient: patients[patientIndex],
+        changedData
     });
+});
+
+app.put("/api/patients/:id/notes", (req, res) => {
+    const { notes } = req.body;
+
+    const patient = patients.find(
+        patient => String(patient.id) === String(req.params.id)
+    );
+
+    if (!patient) {
+        return res.status(404).json({
+            message: "Patient not found"
+        });
+    }
+
+    if (patient.notes === (notes ?? "")) {
+        console.log("\n========================================");
+        console.log("NO NOTES CHANGE");
+        console.log("Patient ID:", patient.id);
+        console.log("========================================\n");
+
+        return res.json({
+            message: "No changes detected",
+            patient
+        });
+    }
+
+    patient.notes = notes ?? "";
+
+    console.log("\n========================================");
+    console.log("PATIENT NOTES UPDATED");
+    console.log("Patient ID:", patient.id);
+    console.log("Changed Data:");
+    console.log(JSON.stringify({
+        notes: patient.notes
+    }, null, 2));
+    console.log("========================================\n");
+
+    res.json({
+        message: "Notes updated successfully",
+        patient
+    });
+});
+
+app.listen(PORT, () => {
+    console.log("========================================");
+    console.log("      DentalCare Backend Server");
+    console.log("========================================");
+    console.log(`Backend running at http://localhost:${PORT}`);
+    console.log(`Patients API: http://localhost:${PORT}/api/patients`);
+    console.log(`Appointments API: http://localhost:${PORT}/api/appointment`);
+    console.log(`Services API: http://localhost:${PORT}/api/services`);
+    console.log("========================================");
 });
