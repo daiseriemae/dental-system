@@ -10,8 +10,12 @@ export default function DentistPatientRecord() {
     const [notes, setNotes] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+
     const [editing, setEditing] = useState(false);
+    const [editID, setEditID] = useState("");
     const [editData, setEditData] = useState({});
+    const [originalEditData, setOriginalEditData] = useState({});
+
     const [offline, setOffline] = useState(!navigator.onLine);
 
     useEffect(() => {
@@ -67,6 +71,9 @@ export default function DentistPatientRecord() {
             setSelectedPatient(data);
             setNotes(data.notes || "");
             setEditing(false);
+            setEditID("");
+            setEditData({});
+            setOriginalEditData({});
         } catch (error) {
             console.error(error);
             alert("Unable to load patient record.");
@@ -119,6 +126,7 @@ export default function DentistPatientRecord() {
             alert("Patient notes have been saved successfully.");
         } catch (error) {
             console.error(error);
+
             alert(
                 "Cannot connect to the backend-api. Make sure server.js is running on port 8080."
             );
@@ -132,7 +140,7 @@ export default function DentistPatientRecord() {
             return;
         }
 
-        setEditData({
+        const patientData = {
             name: selectedPatient.name || "",
             email: selectedPatient.email || "",
             phone: selectedPatient.phone || "",
@@ -140,8 +148,11 @@ export default function DentistPatientRecord() {
             service: selectedPatient.service || "",
             status: selectedPatient.status || "",
             nextVisit: selectedPatient.nextVisit || ""
-        });
+        };
 
+        setEditID(selectedPatient.id);
+        setEditData(patientData);
+        setOriginalEditData(patientData);
         setEditing(true);
     }
 
@@ -155,21 +166,39 @@ export default function DentistPatientRecord() {
     }
 
     async function savePatientChanges() {
-        if (!selectedPatient) {
+        if (!editID) {
             return;
         }
 
         setSaving(true);
 
         try {
+            const changedData = {};
+
+            Object.keys(editData).forEach(key => {
+                const oldValue = originalEditData[key] ?? "";
+                const newValue = editData[key] ?? "";
+
+                if (oldValue !== newValue) {
+                    changedData[key] = newValue;
+                }
+            });
+
+            if (Object.keys(changedData).length === 0) {
+                alert("No changes detected.");
+                setEditing(false);
+                setSaving(false);
+                return;
+            }
+
             const response = await fetch(
-                `${API_URL}/${selectedPatient.id}`,
+                `${API_URL}/${editID}`,
                 {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify(editData)
+                    body: JSON.stringify(changedData)
                 }
             );
 
@@ -194,17 +223,29 @@ export default function DentistPatientRecord() {
             );
 
             setNotes(updatedPatient.notes || "");
+
+            setEditID("");
+            setEditData({});
+            setOriginalEditData({});
             setEditing(false);
 
             alert("Patient record updated successfully.");
         } catch (error) {
             console.error(error);
+
             alert(
                 "Cannot update patient record. Make sure server.js is running on port 8080."
             );
         } finally {
             setSaving(false);
         }
+    }
+
+    function cancelEdit() {
+        setEditing(false);
+        setEditID("");
+        setEditData({});
+        setOriginalEditData({});
     }
 
     function getFilteredPatients() {
@@ -753,6 +794,7 @@ export default function DentistPatientRecord() {
 
                         <div>
                             <h1>Patient Records</h1>
+
                             <p>
                                 View and manage your patients' dental records.
                             </p>
@@ -852,9 +894,8 @@ export default function DentistPatientRecord() {
 
                                                 <button
                                                     className="close-edit-btn"
-                                                    onClick={() =>
-                                                        setEditing(false)
-                                                    }
+                                                    onClick={cancelEdit}
+                                                    disabled={saving}
                                                 >
                                                     ✕
                                                 </button>
@@ -1030,9 +1071,7 @@ export default function DentistPatientRecord() {
                                             <div className="edit-actions">
                                                 <button
                                                     className="cancel-edit-btn"
-                                                    onClick={() =>
-                                                        setEditing(false)
-                                                    }
+                                                    onClick={cancelEdit}
                                                     disabled={saving}
                                                 >
                                                     Cancel
