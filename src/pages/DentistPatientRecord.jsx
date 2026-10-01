@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
-const API_URL = "http://localhost:8080/api/patients";
+const API_URL = "533";
 
 export default function DentistPatientRecord() {
     const [patients, setPatients] = useState([]);
