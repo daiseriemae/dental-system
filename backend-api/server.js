@@ -7,10 +7,6 @@ const PORT = 8080;
 app.use(cors());
 app.use(express.json());
 
-// ========================================
-// SERVICES
-// ========================================
-
 const services = [
     {
         id: "1",
@@ -46,15 +42,7 @@ const services = [
 
 const defaultServices = JSON.parse(JSON.stringify(services));
 
-// ========================================
-// APPOINTMENTS
-// ========================================
-
 let appointments = [];
-
-// ========================================
-// PATIENTS
-// ========================================
 
 let patients = [
     {
@@ -91,7 +79,6 @@ let patients = [
             }
         ]
     },
-
     {
         id: "P-00126",
         name: "John Michael Cruz",
@@ -114,7 +101,6 @@ let patients = [
             }
         ]
     },
-
     {
         id: "P-00127",
         name: "Angela Reyes",
@@ -137,7 +123,6 @@ let patients = [
             }
         ]
     },
-
     {
         id: "P-00128",
         name: "Mark Anthony Garcia",
@@ -160,7 +145,6 @@ let patients = [
             }
         ]
     },
-
     {
         id: "P-00129",
         name: "Sofia Mendoza",
@@ -185,10 +169,6 @@ let patients = [
     }
 ];
 
-// ========================================
-// HOME
-// ========================================
-
 app.get("/", (req, res) => {
     res.json({
         message: "DentalCare backend is running",
@@ -198,17 +178,9 @@ app.get("/", (req, res) => {
     });
 });
 
-// ========================================
-// SERVICES - GET
-// ========================================
-
 app.get("/api/services", (req, res) => {
     res.json(services);
 });
-
-// ========================================
-// SERVICES - POST
-// ========================================
 
 app.post("/api/services", (req, res) => {
     const { name, price } = req.body;
@@ -237,10 +209,6 @@ app.post("/api/services", (req, res) => {
     res.status(201).json(newService);
 });
 
-// ========================================
-// SERVICES - RESTORE
-// ========================================
-
 app.post("/api/services/restore", (req, res) => {
     services.length = 0;
 
@@ -257,10 +225,6 @@ app.post("/api/services/restore", (req, res) => {
         services
     });
 });
-
-// ========================================
-// SERVICES - DELETE
-// ========================================
 
 app.delete("/api/services/:id", (req, res) => {
     const index = services.findIndex(
@@ -289,17 +253,9 @@ app.delete("/api/services/:id", (req, res) => {
     });
 });
 
-// ========================================
-// APPOINTMENTS - GET
-// ========================================
-
 app.get("/api/appointment", (req, res) => {
     res.json(appointments);
 });
-
-// ========================================
-// APPOINTMENTS - POST
-// ========================================
 
 app.post("/api/appointment", (req, res) => {
     const {
@@ -356,10 +312,6 @@ app.post("/api/appointment", (req, res) => {
     res.status(201).json(newAppointment);
 });
 
-// ========================================
-// APPOINTMENTS - UPDATE STATUS
-// ========================================
-
 app.put("/api/appointment/:id/status", (req, res) => {
     const { status } = req.body;
 
@@ -399,17 +351,9 @@ app.put("/api/appointment/:id/status", (req, res) => {
     res.json(appointment);
 });
 
-// ========================================
-// PATIENTS - GET ALL
-// ========================================
-
 app.get("/api/patients", (req, res) => {
     res.json(patients);
 });
-
-// ========================================
-// PATIENTS - GET ONE
-// ========================================
 
 app.get("/api/patients/:id", (req, res) => {
     const patient = patients.find(
@@ -425,27 +369,6 @@ app.get("/api/patients/:id", (req, res) => {
     res.json(patient);
 });
 
-// ========================================
-// PATIENTS - UPDATE
-// ========================================
-// This is the IMPORTANT route for your Edit button.
-//
-// React sends:
-//
-// PUT /api/patients/P-00125
-//
-// Body:
-//
-// {
-//     name,
-//     email,
-//     phone,
-//     birthdate,
-//     service,
-//     status,
-//     nextVisit
-// }
-
 app.put("/api/patients/:id", (req, res) => {
     const id = req.params.id;
     const editedData = req.body;
@@ -453,17 +376,13 @@ app.put("/api/patients/:id", (req, res) => {
     console.log("\n========================================");
     console.log("       EDIT PATIENT REQUEST RECEIVED");
     console.log("========================================");
-
     console.log("Patient ID:", id);
 
     console.log("\nEdited Data Sent From Frontend:");
-    console.log(
-        JSON.stringify(editedData, null, 2)
-    );
+    console.log(JSON.stringify(editedData, null, 2));
 
     const patientIndex = patients.findIndex(
-        patient =>
-            String(patient.id) === String(id)
+        patient => String(patient.id) === String(id)
     );
 
     if (patientIndex === -1) {
@@ -475,13 +394,11 @@ app.put("/api/patients/:id", (req, res) => {
         });
     }
 
-    // Update only the fields sent by the frontend
     patients[patientIndex] = {
         ...patients[patientIndex],
         ...editedData
     };
 
-    // Update avatar automatically if name changed
     if (patients[patientIndex].name) {
         patients[patientIndex].avatar =
             patients[patientIndex].name
@@ -514,10 +431,6 @@ app.put("/api/patients/:id", (req, res) => {
     });
 });
 
-// ========================================
-// PATIENT NOTES - UPDATE
-// ========================================
-
 app.put("/api/patients/:id/notes", (req, res) => {
     const { notes } = req.body;
 
@@ -546,10 +459,6 @@ app.put("/api/patients/:id/notes", (req, res) => {
         patient
     });
 });
-
-// ========================================
-// START SERVER
-// ========================================
 
 app.listen(PORT, () => {
     console.log("========================================");
