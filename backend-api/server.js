@@ -373,29 +373,27 @@ app.put("/api/patients/:id", (req, res) => {
     const id = req.params.id;
     const editedData = req.body;
 
-    console.log("\n========================================");
-    console.log("       EDIT PATIENT REQUEST RECEIVED");
-    console.log("========================================");
-    console.log("Patient ID:", id);
-
-    console.log("\nEdited Data Sent From Frontend:");
-    console.log(JSON.stringify(editedData, null, 2));
-
     const patientIndex = patients.findIndex(
         patient => String(patient.id) === String(id)
     );
 
     if (patientIndex === -1) {
-        console.log("\nPatient not found:", id);
-        console.log("========================================\n");
-
         return res.status(404).json({
             message: "Patient not found"
         });
     }
 
+    const oldPatient = patients[patientIndex];
+    const changedData = {};
+
+    Object.keys(editedData).forEach(key => {
+        if (editedData[key] !== oldPatient[key]) {
+            changedData[key] = editedData[key];
+        }
+    });
+
     patients[patientIndex] = {
-        ...patients[patientIndex],
+        ...oldPatient,
         ...editedData
     };
 
@@ -410,66 +408,21 @@ app.put("/api/patients/:id", (req, res) => {
                 .toUpperCase();
     }
 
-    console.log("\nUpdated Patient Data:");
-    console.log(
-        JSON.stringify(
-            patients[patientIndex],
-            null,
-            2
-        )
-    );
-
     console.log("\n========================================");
-    console.log(
-        `Patient ${id} updated successfully`
-    );
+    console.log("PATIENT UPDATED");
+    console.log("Patient ID:", id);
+    console.log("Changed Data:");
+
+    if (Object.keys(changedData).length === 0) {
+        console.log("No changes detected.");
+    } else {
+        console.log(JSON.stringify(changedData, null, 2));
+    }
+
     console.log("========================================\n");
 
     res.json({
         message: "Patient record updated successfully",
         patient: patients[patientIndex]
     });
-});
-
-app.put("/api/patients/:id/notes", (req, res) => {
-    const { notes } = req.body;
-
-    const patient = patients.find(
-        patient => patient.id === req.params.id
-    );
-
-    if (!patient) {
-        return res.status(404).json({
-            message: "Patient not found"
-        });
-    }
-
-    patient.notes = notes ?? "";
-
-    console.log("\n========================================");
-    console.log("PATIENT NOTES UPDATED");
-    console.log("========================================");
-    console.log("Patient ID:", patient.id);
-    console.log("Patient:", patient.name);
-    console.log("Notes:", patient.notes);
-    console.log("========================================\n");
-
-    res.json({
-        message: "Notes updated successfully",
-        patient
-    });
-});
-
-app.listen(PORT, () => {
-    console.log("========================================");
-    console.log("      DentalCare Backend Server");
-    console.log("========================================");
-    console.log(`Backend running at http://localhost:${PORT}`);
-    console.log("Patients API:");
-    console.log(`http://localhost:${PORT}/api/patients`);
-    console.log("Appointments API:");
-    console.log(`http://localhost:${PORT}/api/appointment`);
-    console.log("Services API:");
-    console.log(`http://localhost:${PORT}/api/services`);
-    console.log("========================================");
 });
