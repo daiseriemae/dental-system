@@ -402,3 +402,38 @@ app.put("/api/patients/:id/notes", (req, res) => {
 app.listen(PORT, "127.0.0.1", () => {
     console.log(`Backend running at http://localhost:${PORT}`);
 });
+
+app.put("/api/patients/:id", (req, res) => {
+    const patientId = req.params.id;
+    const updatedData = req.body;
+
+    const patientIndex = patients.findIndex(
+        patient => String(patient.id) === String(patientId)
+    );
+
+    if (patientIndex === -1) {
+        console.log(`❌ Patient not found: ${patientId}`);
+
+        return res.status(404).json({
+            message: "Patient not found"
+        });
+    }
+
+    patients[patientIndex] = {
+        ...patients[patientIndex],
+        ...updatedData
+    };
+
+    console.log("\n========================================");
+    console.log("📝 PATIENT RECORD UPDATED");
+    console.log("========================================");
+    console.log("Patient ID:", patientId);
+    console.log("Updated Data:");
+    console.log(JSON.stringify(patients[patientIndex], null, 2));
+    console.log("========================================\n");
+
+    res.json({
+        message: "Patient updated successfully",
+        patient: patients[patientIndex]
+    });
+});
