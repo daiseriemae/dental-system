@@ -241,6 +241,92 @@ export default function DentistPatientRecord() {
         }
     }
 
+    async function deletePatient() {
+        if (!selectedPatient) {
+            return;
+        }
+
+        const patientName = selectedPatient.name || "this patient";
+
+        const confirmed = window.confirm(
+            `Are you sure you want to delete ${patientName}?\n\nThis action cannot be undone.`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setSaving(true);
+
+        try {
+            const response = await fetch(
+                `${API_URL}/${selectedPatient.id}`,
+                {
+                    method: "DELETE"
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Unable to delete patient."
+                );
+            }
+
+            const deletedID = selectedPatient.id;
+
+            const remainingPatients = patients.filter(
+                patient => patient.id !== deletedID
+            );
+
+            setPatients(remainingPatients);
+
+            if (remainingPatients.length > 0) {
+                const nextPatient = remainingPatients[0];
+
+                try {
+                    const nextResponse = await fetch(
+                        `${API_URL}/${nextPatient.id}`
+                    );
+
+                    if (nextResponse.ok) {
+                        const nextData = await nextResponse.json();
+
+                        setSelectedPatient(nextData);
+                        setNotes(nextData.notes || "");
+                    } else {
+                        setSelectedPatient(nextPatient);
+                        setNotes(nextPatient.notes || "");
+                    }
+                } catch (error) {
+                    console.error(error);
+
+                    setSelectedPatient(nextPatient);
+                    setNotes(nextPatient.notes || "");
+                }
+            } else {
+                setSelectedPatient(null);
+                setNotes("");
+            }
+
+            setEditing(false);
+            setEditID("");
+            setEditData({});
+            setOriginalEditData({});
+
+            alert("Patient record deleted successfully.");
+        } catch (error) {
+            console.error(error);
+
+            alert(
+                "Cannot delete patient record. Make sure server.js is running on port 8080."
+            );
+        } finally {
+            setSaving(false);
+        }
+    }
+
     function cancelEdit() {
         setEditing(false);
         setEditID("");
@@ -252,8 +338,12 @@ export default function DentistPatientRecord() {
         const searchText = search.toLowerCase().trim();
 
         return patients.filter(patient =>
-            patient.name.toLowerCase().includes(searchText) ||
-            patient.id.toLowerCase().includes(searchText)
+            (patient.name || "")
+                .toLowerCase()
+                .includes(searchText) ||
+            (patient.id || "")
+                .toLowerCase()
+                .includes(searchText)
         );
     }
 
@@ -453,18 +543,43 @@ export default function DentistPatientRecord() {
                     margin-top: 5px;
                 }
 
-                .edit-btn {
+                .record-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .edit-btn,
+                .delete-btn {
                     border: none;
-                    background: #eee7f5;
-                    color: #604879;
                     padding: 10px 15px;
                     border-radius: 8px;
                     cursor: pointer;
                     font-weight: bold;
                 }
 
+                .edit-btn {
+                    background: #eee7f5;
+                    color: #604879;
+                }
+
                 .edit-btn:hover {
                     background: #e1d5ed;
+                }
+
+                .delete-btn {
+                    background: #dc3545;
+                    color: white;
+                }
+
+                .delete-btn:hover {
+                    background: #c82333;
+                }
+
+                .edit-btn:disabled,
+                .delete-btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
                 }
 
                 .edit-form {
@@ -536,12 +651,14 @@ export default function DentistPatientRecord() {
                 .edit-actions {
                     display: flex;
                     justify-content: flex-end;
+                    align-items: center;
                     gap: 10px;
                     margin-top: 20px;
                 }
 
                 .cancel-edit-btn,
-                .save-edit-btn {
+                .save-edit-btn,
+                .delete-edit-btn {
                     border: none;
                     padding: 10px 18px;
                     border-radius: 8px;
@@ -554,13 +671,32 @@ export default function DentistPatientRecord() {
                     color: #555;
                 }
 
+                .cancel-edit-btn:hover {
+                    background: #ddd;
+                }
+
                 .save-edit-btn {
                     background: #80609e;
                     color: white;
                 }
 
+                .save-edit-btn:hover {
+                    background: #6f528c;
+                }
+
+                .delete-edit-btn {
+                    background: #dc3545;
+                    color: white;
+                    margin-right: auto;
+                }
+
+                .delete-edit-btn:hover {
+                    background: #c82333;
+                }
+
                 .cancel-edit-btn:disabled,
-                .save-edit-btn:disabled {
+                .save-edit-btn:disabled,
+                .delete-edit-btn:disabled {
                     opacity: 0.6;
                     cursor: not-allowed;
                 }
@@ -727,6 +863,19 @@ export default function DentistPatientRecord() {
                     .topbar h1 {
                         font-size: 22px;
                     }
+
+                    .record-header {
+                        flex-direction: column;
+                        align-items: stretch;
+                    }
+
+                    .record-actions {
+                        width: 100%;
+                    }
+
+                    .record-actions button {
+                        flex: 1;
+                    }
                 }
 
                 @media (max-width: 550px) {
@@ -753,13 +902,28 @@ export default function DentistPatientRecord() {
                         align-items: flex-start;
                     }
 
+                    .record-actions {
+                        flex-direction: column;
+                        width: 100%;
+                    }
+
+                    .record-actions button {
+                        width: 100%;
+                    }
+
                     .edit-actions {
                         flex-direction: column;
                     }
 
                     .cancel-edit-btn,
-                    .save-edit-btn {
+                    .save-edit-btn,
+                    .delete-edit-btn {
                         width: 100%;
+                    }
+
+                    .delete-edit-btn {
+                        margin-right: 0;
+                        order: 3;
                     }
                 }
             `}</style>
@@ -962,8 +1126,7 @@ export default function DentistPatientRecord() {
                                                         type="text"
                                                         name="birthdate"
                                                         value={
-                                                            editData.birthdate ||
-                                                            ""
+                                                            editData.birthdate || ""
                                                         }
                                                         onChange={
                                                             handleEditChange
@@ -979,8 +1142,7 @@ export default function DentistPatientRecord() {
                                                     <select
                                                         name="service"
                                                         value={
-                                                            editData.service ||
-                                                            ""
+                                                            editData.service || ""
                                                         }
                                                         onChange={
                                                             handleEditChange
@@ -1024,8 +1186,7 @@ export default function DentistPatientRecord() {
                                                     <select
                                                         name="status"
                                                         value={
-                                                            editData.status ||
-                                                            ""
+                                                            editData.status || ""
                                                         }
                                                         onChange={
                                                             handleEditChange
@@ -1058,8 +1219,7 @@ export default function DentistPatientRecord() {
                                                         type="text"
                                                         name="nextVisit"
                                                         value={
-                                                            editData.nextVisit ||
-                                                            ""
+                                                            editData.nextVisit || ""
                                                         }
                                                         onChange={
                                                             handleEditChange
@@ -1069,6 +1229,16 @@ export default function DentistPatientRecord() {
                                             </div>
 
                                             <div className="edit-actions">
+                                                <button
+                                                    className="delete-edit-btn"
+                                                    onClick={deletePatient}
+                                                    disabled={saving}
+                                                >
+                                                    {saving
+                                                        ? "Deleting..."
+                                                        : "🗑️ Delete Patient"}
+                                                </button>
+
                                                 <button
                                                     className="cancel-edit-btn"
                                                     onClick={cancelEdit}
@@ -1110,12 +1280,23 @@ export default function DentistPatientRecord() {
                                             </div>
                                         </div>
 
-                                        <button
-                                            className="edit-btn"
-                                            onClick={editPatient}
-                                        >
-                                            ✏️ Edit
-                                        </button>
+                                        <div className="record-actions">
+                                            <button
+                                                className="edit-btn"
+                                                onClick={editPatient}
+                                                disabled={saving}
+                                            >
+                                                ✏️ Edit
+                                            </button>
+
+                                            <button
+                                                className="delete-btn"
+                                                onClick={deletePatient}
+                                                disabled={saving}
+                                            >
+                                                🗑️ Delete
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="info-section">
