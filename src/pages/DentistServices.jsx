@@ -16,7 +16,6 @@ const DentistServices = () => {
 
     const [editingService, setEditingService] = useState(null);
 
-    // Store the complete service that will be deleted
     const [serviceToDelete, setServiceToDelete] = useState(null);
 
     const [loading, setLoading] = useState(false);
