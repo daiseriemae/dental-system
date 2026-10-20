@@ -10,29 +10,42 @@ export default function PatientAppointment() {
     const [time, setTime] = useState("");
     const [notes, setNotes] = useState("");
     const [message, setMessage] = useState("");
+    const [messageType, setMessageType] = useState("success");
+    const [cancellingId, setCancellingId] = useState(null);
 
     const api_url = "http://localhost:8080/api/appointment";
 
     useEffect(() => {
-        fetch(api_url)
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error("Failed to load appointments");
-                }
-                return response.json();
-            })
-            .then((data) => {
-                setAppointments(Array.isArray(data) ? data : []);
-            })
-            .catch((err) => {
-                console.error(err);
-                setMessage("Unable to load appointments. Please check your server.");
-            });
+        loadAppointments();
     }, []);
+
+    async function loadAppointments() {
+        try {
+            const response = await fetch(api_url);
+
+            if (!response.ok) {
+                throw new Error("Failed to load appointments");
+            }
+
+            const data = await response.json();
+            setAppointments(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error(err);
+            showMessage(
+                "Unable to load appointments. Please check your server.",
+                "error"
+            );
+        }
+    }
+
+    function showMessage(text, type = "success") {
+        setMessage(text);
+        setMessageType(type);
+    }
 
     async function formSubmit(e) {
         e.preventDefault();
-        setMessage("");
+        showMessage("");
 
         try {
             const response = await fetch(api_url, {
@@ -54,7 +67,10 @@ export default function PatientAppointment() {
             const data = await response.json();
 
             if (!response.ok) {
-                setMessage(data.message || "Failed to submit appointment.");
+                showMessage(
+                    data.message || "Failed to submit appointment.",
+                    "error"
+                );
                 return;
             }
 
@@ -65,7 +81,7 @@ export default function PatientAppointment() {
                 newAppointment
             ]);
 
-            setMessage("Appointment request submitted successfully!");
+            showMessage("Appointment request submitted successfully!");
 
             setService("");
             setDentist("");
@@ -74,9 +90,97 @@ export default function PatientAppointment() {
             setNotes("");
         } catch (err) {
             console.error(err);
-            setMessage("Something went wrong. Please check your backend server.");
+            showMessage(
+                "Something went wrong. Please check your backend server.",
+                "error"
+            );
         }
     }
+
+    async function cancelAppointment(appointment) {
+        const appointmentId = appointment.id ?? appointment._id;
+        const currentStatus = appointment.status || "Pending";
+
+        if (!appointmentId) {
+            showMessage("Unable to cancel: appointment ID not found.", "error");
+            return;
+        }
+
+        if (
+            currentStatus === "Cancelled" ||
+            currentStatus === "Completed"
+        ) {
+            showMessage(
+                "This appointment can no longer be cancelled.",
+                "error"
+            );
+            return;
+        }
+
+        if (
+            !window.confirm(
+                "Are you sure you want to cancel this appointment?"
+            )
+        ) {
+            return;
+        }
+
+        setCancellingId(String(appointmentId));
+        showMessage("");
+
+        try {
+            const response = await fetch(
+                `${api_url}/${encodeURIComponent(appointmentId)}/status`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        status: "Cancelled"
+                    })
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                showMessage(
+                    data.message || "Failed to cancel appointment.",
+                    "error"
+                );
+                return;
+            }
+
+            const updatedAppointment = data.appointment;
+
+            setAppointments((currentAppointments) =>
+                currentAppointments.map((item) =>
+                    String(item.id ?? item._id) === String(appointmentId)
+                        ? {
+                              ...item,
+                              ...(updatedAppointment || {}),
+                              status: "Cancelled"
+                          }
+                        : item
+                )
+            );
+
+            showMessage("Appointment cancelled successfully!");
+        } catch (err) {
+            console.error(err);
+            showMessage(
+                "Unable to cancel appointment. Please check your backend server.",
+                "error"
+            );
+        } finally {
+            setCancellingId(null);
+        }
+    }
+
+    const myAppointments = appointments.filter(
+        (appointment) => appointment.patientId === patientId
+    );
 
     return (
         <>
@@ -206,18 +310,22 @@ export default function PatientAppointment() {
                     background: #80609e;
                 }
 
-                .appointment-submit-btn:disabled {
-                    opacity: .7;
-                    cursor: not-allowed;
-                }
-
                 .appointment-message {
                     margin-bottom: 20px;
                     padding: 15px;
                     border-radius: 10px;
+                    font-weight: 500;
+                    overflow-wrap: anywhere;
+                }
+
+                .appointment-message.success {
                     background: #e7f6ec;
                     color: #205c35;
-                    font-weight: 500;
+                }
+
+                .appointment-message.error {
+                    background: #fde8e8;
+                    color: #a61b1b;
                 }
 
                 .appointment-info-box {
@@ -281,6 +389,37 @@ export default function PatientAppointment() {
                     white-space: nowrap;
                 }
 
+                .appointment-status.status-cancelled {
+                    background: #fde2e2;
+                    color: #a61b1b !important;
+                }
+
+                .appointment-status.status-completed {
+                    background: #d9f4e2;
+                    color: #176638 !important;
+                }
+
+                .appointment-cancel-btn {
+                    background: #dc3545;
+                    color: #fff;
+                    border: none;
+                    padding: 8px 14px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    white-space: nowrap;
+                }
+
+                .appointment-cancel-btn:hover {
+                    background: #b02a37;
+                }
+
+                .appointment-cancel-btn:disabled {
+                    opacity: .6;
+                    cursor: not-allowed;
+                }
+
                 .appointment-empty {
                     text-align: center !important;
                     padding: 25px !important;
@@ -333,7 +472,7 @@ export default function PatientAppointment() {
                     }
 
                     .appointment-table {
-                        min-width: 800px;
+                        min-width: 900px;
                     }
                 }
             `}</style>
@@ -348,6 +487,7 @@ export default function PatientAppointment() {
                         aria-label="Toggle navigation"
                         onClick={() => {
                             const sidebar = document.querySelector(".sidebar");
+
                             if (sidebar) {
                                 sidebar.classList.toggle("open");
                                 sidebar.classList.toggle("show");
@@ -356,6 +496,7 @@ export default function PatientAppointment() {
                     >
                         ☰
                     </button>
+
                     <strong>DentalCare</strong>
                 </div>
 
@@ -373,7 +514,10 @@ export default function PatientAppointment() {
                     </div>
 
                     {message && (
-                        <div className="appointment-message" role="status">
+                        <div
+                            className={`appointment-message ${messageType}`}
+                            role="status"
+                        >
                             {message}
                         </div>
                     )}
@@ -497,32 +641,74 @@ export default function PatientAppointment() {
                                     <th>Time</th>
                                     <th>Notes</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
 
                             <tbody>
-                                {appointments.length === 0 ? (
+                                {myAppointments.length === 0 ? (
                                     <tr>
-                                        <td colSpan="7" className="appointment-empty">
+                                        <td colSpan="8" className="appointment-empty">
                                             No appointments found.
                                         </td>
                                     </tr>
                                 ) : (
-                                    appointments.map((appointment, index) => (
-                                        <tr key={appointment.id ?? appointment._id ?? index}>
-                                            <td>{appointment.patientId || "—"}</td>
-                                            <td>{appointment.service || "—"}</td>
-                                            <td>{appointment.dentist || "—"}</td>
-                                            <td>{appointment.date || "—"}</td>
-                                            <td>{appointment.time || "—"}</td>
-                                            <td>{appointment.notes || "—"}</td>
-                                            <td>
-                                                <span className="appointment-status">
-                                                    {appointment.status || "Pending"}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))
+                                    myAppointments.map((appointment, index) => {
+                                        const appointmentId =
+                                            appointment.id ?? appointment._id;
+
+                                        const status =
+                                            appointment.status || "Pending";
+
+                                        return (
+                                            <tr key={appointmentId ?? index}>
+                                                <td>{appointment.patientId || "—"}</td>
+                                                <td>{appointment.service || "—"}</td>
+                                                <td>{appointment.dentist || "—"}</td>
+                                                <td>{appointment.date || "—"}</td>
+                                                <td>{appointment.time || "—"}</td>
+                                                <td>{appointment.notes || "—"}</td>
+                                                <td>
+                                                    <span
+                                                        className={`appointment-status ${
+                                                            status === "Cancelled"
+                                                                ? "status-cancelled"
+                                                                : status === "Completed"
+                                                                ? "status-completed"
+                                                                : ""
+                                                        }`}
+                                                    >
+                                                        {status}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    {status !== "Cancelled" &&
+                                                    status !== "Completed" ? (
+                                                        <button
+                                                            type="button"
+                                                            className="appointment-cancel-btn"
+                                                            disabled={
+                                                                cancellingId ===
+                                                                String(appointmentId)
+                                                            }
+                                                            onClick={() =>
+                                                                cancelAppointment(
+                                                                    appointment
+                                                                )
+                                                            }
+                                                        >
+                                                            {cancellingId ===
+                                                            String(appointmentId)
+                                                                ? "Cancelling..."
+                                                                : "Cancel"}
+                                                        </button>
+                                                    ) : (
+                                                        "—"
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
