@@ -1,537 +1,1402 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
 const API_URL = "http://localhost:8080/api/services";
 
-const serviceImages = {
-    "Dental Cleaning": "/dentist-cleaning-teeth.jpeg",
-    "Dental Check-up": "/what-to-expect-dental-checkup-facts.jpg",
-    "Dental Filling": "/tooth-filling.webp",
-    "Teeth Whitening": "/teeth-whitening.webp",
-    "Tooth Extraction": "/extraction.jpg",
-    "Braces Consultation": "/brace.jfif"
-};
-
-export default function DentistServices() {
+const DentistServices = () => {
     const [services, setServices] = useState([]);
-    const [name, setName] = useState("");
-    const [price, setPrice] = useState("");
-    const [description, setDescription] = useState("");
+
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+    const [serviceName, setServiceName] = useState("");
+    const [servicePrice, setServicePrice] = useState("");
+    const [serviceDescription, setServiceDescription] = useState("");
+
+    const [editingService, setEditingService] = useState(null);
+
+    // Store the complete service that will be deleted
+    const [serviceToDelete, setServiceToDelete] = useState(null);
+
+    const [loading, setLoading] = useState(false);
+
     const [message, setMessage] = useState("");
-    const [loading, setLoading] = useState(true);
+    const [messageType, setMessageType] = useState("success");
 
-    useEffect(() => {
-        loadServices();
-    }, []);
+    /* =====================================================
+       LOAD SERVICES
+    ===================================================== */
 
-    async function loadServices() {
+    const fetchServices = async () => {
         try {
+            setLoading(true);
+
             const response = await fetch(API_URL);
 
             if (!response.ok) {
-                throw new Error("Failed to load services");
+                throw new Error("Failed to load services.");
             }
 
             const data = await response.json();
-            setServices(data);
+
+            console.log("================================");
+            console.log("SERVICES FROM BACKEND:");
+            console.log(data);
+            console.log("================================");
+
+            /*
+             * Make sure every service has a string ID.
+             * Backend uses `id`.
+             */
+            const cleanServices = Array.isArray(data)
+                ? data
+                      .filter(
+                          (service) =>
+                              service &&
+                              service.id !== undefined &&
+                              service.id !== null
+                      )
+                      .map((service) => ({
+                          ...service,
+                          id: String(service.id),
+                      }))
+                : [];
+
+            console.log(
+                "CLEAN SERVICES:",
+                cleanServices
+            );
+
+            setServices(cleanServices);
         } catch (error) {
-            console.error(error);
-            setMessage("Cannot connect to the backend.");
+            console.error(
+                "LOAD SERVICES ERROR:",
+                error
+            );
+
+            setMessage(
+                error.message ||
+                    "Failed to load services."
+            );
+
+            setMessageType("danger");
         } finally {
             setLoading(false);
         }
-    }
+    };
 
-    async function addService(e) {
-        e.preventDefault();
+    useEffect(() => {
+        fetchServices();
+    }, []);
 
-        if (!name.trim() || !price || !description.trim()) {
-            setMessage("Please complete all service fields.");
+    /* =====================================================
+       MESSAGE
+    ===================================================== */
+
+    const showMessage = (
+        text,
+        type = "success"
+    ) => {
+        setMessage(text);
+        setMessageType(type);
+
+        setTimeout(() => {
+            setMessage("");
+        }, 3000);
+    };
+
+    /* =====================================================
+       RESET FORM
+    ===================================================== */
+
+    const resetForm = () => {
+        setServiceName("");
+        setServicePrice("");
+        setServiceDescription("");
+    };
+
+    /* =====================================================
+       ADD MODAL
+    ===================================================== */
+
+    const openAddModal = () => {
+        resetForm();
+        setMessage("");
+        setShowAddModal(true);
+    };
+
+    const closeAddModal = () => {
+        setShowAddModal(false);
+        resetForm();
+    };
+
+    /* =====================================================
+       ADD SERVICE
+    ===================================================== */
+
+    const handleAddService = async (event) => {
+        event.preventDefault();
+
+        if (!serviceName.trim()) {
+            showMessage(
+                "Please enter a service name.",
+                "danger"
+            );
+            return;
+        }
+
+        if (
+            servicePrice === "" ||
+            Number.isNaN(Number(servicePrice))
+        ) {
+            showMessage(
+                "Please enter a valid price.",
+                "danger"
+            );
             return;
         }
 
         try {
+            setLoading(true);
+
             const response = await fetch(API_URL, {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    name: name.trim(),
-                    price: Number(price),
-                    description: description.trim()
-                })
+                    name: serviceName.trim(),
+                    price: Number(servicePrice),
+                    description:
+                        serviceDescription.trim(),
+                }),
             });
 
+            const data = await response.json();
+
+            console.log(
+                "ADD SERVICE RESPONSE:",
+                data
+            );
+
             if (!response.ok) {
-                throw new Error("Failed to add service");
+                throw new Error(
+                    data.message ||
+                        "Failed to add service."
+                );
             }
 
-            const newService = await response.json();
+            if (!data.service) {
+                throw new Error(
+                    "Backend did not return the new service."
+                );
+            }
+
+            const newService = {
+                ...data.service,
+                id: String(data.service.id),
+            };
 
             setServices((currentServices) => [
                 ...currentServices,
-                newService
+                newService,
             ]);
 
-            setName("");
-            setPrice("");
-            setDescription("");
-            setMessage("New dental service added successfully.");
-        } catch (error) {
-            console.error(error);
-            setMessage("Cannot add service. Check your backend.");
-        }
-    }
+            closeAddModal();
 
-    async function removeService(id, serviceName) {
-        const confirmed = window.confirm(
-            `Remove ${serviceName} from the service list?`
+            showMessage(
+                "Service added successfully."
+            );
+        } catch (error) {
+            console.error(
+                "ADD SERVICE ERROR:",
+                error
+            );
+
+            showMessage(
+                error.message ||
+                    "Failed to add service.",
+                "danger"
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    /* =====================================================
+       EDIT MODAL
+    ===================================================== */
+
+    const openEditModal = (service) => {
+        console.log("================================");
+        console.log("EDIT BUTTON CLICKED");
+        console.log("FULL SERVICE:", service);
+        console.log("SERVICE ID:", service?.id);
+        console.log("================================");
+
+        if (
+            !service ||
+            service.id === undefined ||
+            service.id === null ||
+            service.id === ""
+        ) {
+            showMessage(
+                "Cannot edit service: Service ID is missing.",
+                "danger"
+            );
+            return;
+        }
+
+        const selectedService = {
+            ...service,
+            id: String(service.id),
+        };
+
+        setEditingService(selectedService);
+
+        setServiceName(
+            service.name || ""
         );
 
-        if (!confirmed) {
+        setServicePrice(
+            service.price ?? ""
+        );
+
+        setServiceDescription(
+            service.description || ""
+        );
+
+        setMessage("");
+        setShowEditModal(true);
+    };
+
+    const closeEditModal = () => {
+        setShowEditModal(false);
+        setEditingService(null);
+        resetForm();
+    };
+
+    /* =====================================================
+       UPDATE SERVICE
+    ===================================================== */
+
+    const handleEditService = async (event) => {
+        event.preventDefault();
+
+        if (
+            !editingService ||
+            !editingService.id
+        ) {
+            showMessage(
+                "Service ID is missing.",
+                "danger"
+            );
+            return;
+        }
+
+        if (!serviceName.trim()) {
+            showMessage(
+                "Please enter a service name.",
+                "danger"
+            );
+            return;
+        }
+
+        if (
+            servicePrice === "" ||
+            Number.isNaN(Number(servicePrice))
+        ) {
+            showMessage(
+                "Please enter a valid price.",
+                "danger"
+            );
             return;
         }
 
         try {
-            const response = await fetch(`${API_URL}/${id}`, {
-                method: "DELETE"
-            });
+            setLoading(true);
 
-            if (!response.ok) {
-                throw new Error("Failed to remove service");
-            }
-
-            setServices((currentServices) =>
-                currentServices.filter((service) => service._id !== id)
+            const serviceId = String(
+                editingService.id
             );
 
-            setMessage("Service removed successfully.");
+            const editURL =
+                `${API_URL}/${serviceId}`;
+
+            console.log("================================");
+            console.log("EDIT SERVICE");
+            console.log("SERVICE ID:", serviceId);
+            console.log("EDIT URL:", editURL);
+            console.log("================================");
+
+            const response = await fetch(editURL, {
+                method: "PUT",
+                headers: {
+                    "Content-Type":
+                        "application/json",
+                },
+                body: JSON.stringify({
+                    name: serviceName.trim(),
+                    price: Number(servicePrice),
+                    description:
+                        serviceDescription.trim(),
+                }),
+            });
+
+            const data = await response.json();
+
+            console.log(
+                "EDIT SERVICE RESPONSE:",
+                data
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message ||
+                        "Failed to update service."
+                );
+            }
+
+            if (!data.service) {
+                throw new Error(
+                    "Backend did not return the updated service."
+                );
+            }
+
+            const updatedService = {
+                ...data.service,
+                id: String(data.service.id),
+            };
+
+            setServices((currentServices) =>
+                currentServices.map(
+                    (service) =>
+                        String(service.id) ===
+                        serviceId
+                            ? updatedService
+                            : service
+                )
+            );
+
+            closeEditModal();
+
+            showMessage(
+                "Service updated successfully."
+            );
         } catch (error) {
-            console.error(error);
-            setMessage("Cannot remove service. Check your backend.");
+            console.error(
+                "EDIT SERVICE ERROR:",
+                error
+            );
+
+            showMessage(
+                error.message ||
+                    "Failed to update service.",
+                "danger"
+            );
+        } finally {
+            setLoading(false);
         }
-    }
+    };
+
+    /* =====================================================
+       DELETE MODAL
+    ===================================================== */
+
+    const openDeleteModal = (service) => {
+        console.log("================================");
+        console.log("DELETE BUTTON CLICKED");
+        console.log("FULL SERVICE:", service);
+        console.log("SERVICE ID:", service?.id);
+        console.log("================================");
+
+        if (
+            !service ||
+            service.id === undefined ||
+            service.id === null ||
+            service.id === ""
+        ) {
+            console.error(
+                "ERROR: SERVICE HAS NO ID",
+                service
+            );
+
+            showMessage(
+                "Cannot delete service: Service ID is missing.",
+                "danger"
+            );
+
+            return;
+        }
+
+        const selectedService = {
+            ...service,
+            id: String(service.id),
+        };
+
+        /*
+         * Store the entire service instead of
+         * only storing deleteId.
+         */
+        setServiceToDelete(selectedService);
+
+        setMessage("");
+        setShowDeleteModal(true);
+    };
+
+    const closeDeleteModal = () => {
+        setShowDeleteModal(false);
+        setServiceToDelete(null);
+    };
+
+    /* =====================================================
+       DELETE SERVICE
+    ===================================================== */
+
+    const handleDeleteService = async () => {
+        console.log("================================");
+        console.log("DELETE CONFIRMATION CLICKED");
+        console.log(
+            "SERVICE TO DELETE:",
+            serviceToDelete
+        );
+        console.log(
+            "SERVICE ID:",
+            serviceToDelete?.id
+        );
+        console.log("================================");
+
+        if (
+            !serviceToDelete ||
+            serviceToDelete.id === undefined ||
+            serviceToDelete.id === null ||
+            serviceToDelete.id === ""
+        ) {
+            console.error(
+                "DELETE FAILED: SERVICE ID IS MISSING"
+            );
+
+            showMessage(
+                "Service ID is missing.",
+                "danger"
+            );
+
+            return;
+        }
+
+        const serviceId = String(
+            serviceToDelete.id
+        );
+
+        try {
+            setLoading(true);
+
+            const deleteURL =
+                `${API_URL}/${serviceId}`;
+
+            console.log("================================");
+            console.log("DELETE SERVICE REQUEST");
+            console.log("SERVICE NAME:",
+                serviceToDelete.name
+            );
+            console.log("SERVICE ID:",
+                serviceId
+            );
+            console.log("DELETE URL:",
+                deleteURL
+            );
+            console.log("================================");
+
+            const response = await fetch(
+                deleteURL,
+                {
+                    method: "DELETE",
+                }
+            );
+
+            const data = await response.json();
+
+            console.log(
+                "DELETE RESPONSE:",
+                data
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message ||
+                        "Failed to delete service."
+                );
+            }
+
+            /*
+             * Remove the exact service from
+             * the frontend.
+             */
+            setServices((currentServices) =>
+                currentServices.filter(
+                    (service) =>
+                        String(service.id) !==
+                        serviceId
+                )
+            );
+
+            closeDeleteModal();
+
+            showMessage(
+                "Service deleted successfully."
+            );
+        } catch (error) {
+            console.error(
+                "DELETE SERVICE ERROR:",
+                error
+            );
+
+            showMessage(
+                error.message ||
+                    "Failed to delete service.",
+                "danger"
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    /* =====================================================
+       FORMAT PRICE
+    ===================================================== */
+
+    const formatPrice = (price) => {
+        return `₱${Number(
+            price || 0
+        ).toLocaleString()}`;
+    };
 
     return (
-        <>
-            <style>{`
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                    font-family: Arial, sans-serif;
-                }
+        <div
+            style={{
+                minHeight: "100vh",
+                backgroundColor: "#f3efff",
+            }}
+        >
+            <Sidebar
+                role="dentist"
+                active="services"
+            />
 
-                body {
-                    background: #f7f3fc;
-                    color: #333;
-                }
+            <div
+                className="container-fluid"
+                style={{
+                    marginLeft: "260px",
+                    width:
+                        "calc(100% - 260px)",
+                    padding: "35px",
+                }}
+            >
+                {/* =================================================
+                    HEADER
+                ================================================= */}
 
-                .main {
-                    margin-left: 250px;
-                    padding: 30px;
-                }
-
-                .topbar {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 25px;
-                }
-
-                .topbar h1 {
-                    color: #5f4778;
-                    font-size: 27px;
-                }
-
-                .topbar p {
-                    color: #777;
-                    margin-top: 5px;
-                    font-size: 14px;
-                }
-
-                .dentist-info {
-                    background: white;
-                    padding: 10px 16px;
-                    border-radius: 12px;
-                    color: #5f4778;
-                    font-weight: bold;
-                    box-shadow: 0 3px 12px rgba(0,0,0,0.05);
-                }
-
-                .offline-banner {
-                    background: #fff3cd;
-                    color: #856404;
-                    padding: 12px;
-                    border-radius: 10px;
-                    margin-bottom: 20px;
-                    text-align: center;
-                }
-
-                .intro {
-                    background: white;
-                    padding: 22px;
-                    border-radius: 15px;
-                    margin-bottom: 22px;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-                }
-
-                .intro h2 {
-                    color: #5f4778;
-                    margin-bottom: 7px;
-                    font-size: 20px;
-                }
-
-                .intro p {
-                    color: #777;
-                    font-size: 14px;
-                }
-
-                .message {
-                    background: #eee7f5;
-                    color: #5f4778;
-                    padding: 12px 15px;
-                    border-radius: 10px;
-                    margin-bottom: 20px;
-                    font-size: 14px;
-                }
-
-                .service-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 18px;
-                }
-
-                .service-card {
-                    background: white;
-                    border-radius: 15px;
-                    padding: 22px;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-                    transition: 0.2s;
-                }
-
-                .service-card:hover {
-                    transform: translateY(-3px);
-                    box-shadow: 0 7px 18px rgba(128,96,158,0.12);
-                }
-
-                .service-image {
-                    width: 100%;
-                    height: 180px;
-                    object-fit: cover;
-                    border-radius: 14px;
-                    margin-bottom: 15px;
-                }
-
-                .service-icon {
-                    width: 55px;
-                    height: 55px;
-                    border-radius: 13px;
-                    background: #eee7f5;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 26px;
-                    margin-bottom: 15px;
-                }
-
-                .service-card h3 {
-                    color: #5f4778;
-                    font-size: 17px;
-                    margin-bottom: 8px;
-                }
-
-                .service-card p {
-                    color: #777;
-                    font-size: 13px;
-                    line-height: 1.5;
-                    min-height: 58px;
-                }
-
-                .service-bottom {
-                    border-top: 1px solid #eee;
-                    margin-top: 15px;
-                    padding-top: 15px;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-
-                .price {
-                    color: #80609e;
-                    font-weight: bold;
-                    font-size: 15px;
-                }
-
-                .remove-btn {
-                    border: none;
-                    background: #f9e0e2;
-                    color: #a03a43;
-                    padding: 8px 11px;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-size: 12px;
-                }
-
-                .remove-btn:hover {
-                    opacity: 0.8;
-                }
-
-                .add-section {
-                    margin-top: 25px;
-                    background: white;
-                    padding: 22px;
-                    border-radius: 15px;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-                }
-
-                .add-section h2 {
-                    color: #5f4778;
-                    font-size: 19px;
-                    margin-bottom: 15px;
-                }
-
-                .form-grid {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 14px;
-                }
-
-                .form-group label {
-                    display: block;
-                    color: #666;
-                    font-size: 12px;
-                    margin-bottom: 6px;
-                    font-weight: bold;
-                }
-
-                .form-group input,
-                .form-group textarea {
-                    width: 100%;
-                    padding: 11px 13px;
-                    border: 1px solid #ddd;
-                    border-radius: 9px;
-                    outline: none;
-                    font-size: 13px;
-                }
-
-                .form-group textarea {
-                    resize: vertical;
-                    min-height: 80px;
-                }
-
-                .form-group input:focus,
-                .form-group textarea:focus {
-                    border-color: #9b7bb8;
-                }
-
-                .full {
-                    grid-column: 1 / -1;
-                }
-
-                .add-btn {
-                    margin-top: 15px;
-                    border: none;
-                    background: #80609e;
-                    color: white;
-                    padding: 12px 20px;
-                    border-radius: 9px;
-                    cursor: pointer;
-                    font-weight: bold;
-                }
-
-                .add-btn:hover {
-                    background: #6d5189;
-                }
-
-                .empty {
-                    background: white;
-                    padding: 30px;
-                    border-radius: 15px;
-                    text-align: center;
-                    color: #777;
-                }
-
-                @media (max-width: 1000px) {
-                    .service-grid {
-                        grid-template-columns: repeat(2, 1fr);
-                    }
-                }
-
-                @media (max-width: 768px) {
-                    .main {
-                        margin-left: 0;
-                        padding: 20px;
-                    }
-
-                    .dentist-info {
-                        display: none;
-                    }
-                }
-
-                @media (max-width: 550px) {
-                    .service-grid {
-                        grid-template-columns: 1fr;
-                    }
-
-                    .form-grid {
-                        grid-template-columns: 1fr;
-                    }
-
-                    .full {
-                        grid-column: auto;
-                    }
-
-                    .topbar h1 {
-                        font-size: 22px;
-                    }
-                }
-            `}</style>
-
-            <Sidebar role="dentist" active="services" />
-
-            <main className="main">
-                {!navigator.onLine && (
-                    <div className="offline-banner">
-                        ⚠️ You are currently offline.
-                    </div>
-                )}
-
-                <div className="topbar">
+                <div className="d-flex justify-content-between align-items-center mb-4">
                     <div>
-                        <h1>Dental Services</h1>
-                        <p>Manage the services offered by your clinic.</p>
+                        <h2
+                            className="fw-bold mb-1"
+                            style={{
+                                color: "#80609e",
+                            }}
+                        >
+                            Dental Services
+                        </h2>
+
+                        <p
+                            className="mb-0"
+                            style={{
+                                color: "#777",
+                            }}
+                        >
+                            Manage the services
+                            offered by your clinic
+                        </p>
                     </div>
 
-                    <div className="dentist-info">
-                        👩‍⚕️ Dr. Jhulance Fenandez
+                    <div className="text-end">
+                        <div
+                            className="fw-semibold"
+                            style={{
+                                color: "#80609e",
+                            }}
+                        >
+                            Dr. Maria Santos
+                        </div>
+
+                        <small
+                            style={{
+                                color: "#777",
+                            }}
+                        >
+                            Dentist
+                        </small>
                     </div>
                 </div>
 
+                {/* =================================================
+                    MESSAGE
+                ================================================= */}
+
                 {message && (
-                    <div className="message">
-                        {message}
+                    <div
+                        className={`alert alert-${messageType} d-flex justify-content-between align-items-center`}
+                        role="alert"
+                    >
+                        <span>
+                            {message}
+                        </span>
+
+                        <button
+                            type="button"
+                            className="btn-close"
+                            onClick={() =>
+                                setMessage("")
+                            }
+                        ></button>
                     </div>
                 )}
 
-                <section className="intro">
-                    <h2>Available Dental Services</h2>
-                    <p>
-                        These are the dental services currently available
-                        for patients when booking an appointment.
-                    </p>
-                </section>
+                {/* =================================================
+                    SERVICE HEADER
+                ================================================= */}
 
-                <section className="service-grid">
-                    {loading ? (
-                        <div className="empty">
-                            Loading services...
-                        </div>
-                    ) : services.length === 0 ? (
-                        <div className="empty">
-                            No dental services available.
-                        </div>
-                    ) : (
-                        services.map((service) => (
-                            <div
-                                className="service-card"
-                                key={service._id}
-                            >
-                                {serviceImages[service.name] && (
-                                    <img
-                                        className="service-image"
-                                        src={serviceImages[service.name]}
-                                        alt={service.name}
-                                    />
-                                )}
+                <div
+                    className="card border-0 shadow-sm mb-4"
+                    style={{
+                        borderRadius: "16px",
+                    }}
+                >
+                    <div className="card-body p-4">
+                        <div className="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5
+                                    className="fw-bold mb-1"
+                                    style={{
+                                        color:
+                                            "#80609e",
+                                    }}
+                                >
+                                    Available Services
+                                </h5>
 
-                                <div className="service-icon">
-                                    🦷
-                                </div>
-
-                                <h3>{service.name}</h3>
-
-                                <p>
-                                    {service.description}
+                                <p
+                                    className="mb-0"
+                                    style={{
+                                        color:
+                                            "#777",
+                                    }}
+                                >
+                                    Add, edit, or
+                                    delete dental
+                                    services.
                                 </p>
+                            </div>
 
-                                <div className="service-bottom">
-                                    <span className="price">
-                                        ₱{Number(service.price).toLocaleString()}
-                                    </span>
+                            <button
+                                type="button"
+                                className="btn"
+                                onClick={
+                                    openAddModal
+                                }
+                                style={{
+                                    backgroundColor:
+                                        "#9b7bb8",
+                                    color:
+                                        "#ffffff",
+                                    borderRadius:
+                                        "10px",
+                                    padding:
+                                        "10px 18px",
+                                    border: "none",
+                                }}
+                            >
+                                <i className="bi bi-plus-lg me-2"></i>
+                                Add Service
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-                                    <button
-                                        type="button"
-                                        className="remove-btn"
-                                        onClick={() =>
-                                            removeService(
-                                                service._id,
-                                                service.name
-                                            )
-                                        }
+                {/* =================================================
+                    SERVICES
+                ================================================= */}
+
+                {loading &&
+                services.length === 0 ? (
+                    <div className="text-center py-5">
+                        <div
+                            className="spinner-border"
+                            style={{
+                                color:
+                                    "#9b7bb8",
+                            }}
+                        ></div>
+
+                        <p className="mt-3 text-muted">
+                            Loading services...
+                        </p>
+                    </div>
+                ) : services.length ===
+                  0 ? (
+                    <div
+                        className="card border-0 shadow-sm text-center"
+                        style={{
+                            borderRadius:
+                                "16px",
+                        }}
+                    >
+                        <div className="card-body py-5">
+                            <i
+                                className="bi bi-tooth"
+                                style={{
+                                    fontSize:
+                                        "50px",
+                                    color:
+                                        "#9b7bb8",
+                                }}
+                            ></i>
+
+                            <h5
+                                className="mt-3 fw-bold"
+                                style={{
+                                    color:
+                                        "#80609e",
+                                }}
+                            >
+                                No services available
+                            </h5>
+
+                            <p className="text-muted">
+                                Add your first dental
+                                service.
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="row g-4">
+                        {services.map(
+                            (service) => (
+                                <div
+                                    className="col-md-6 col-xl-4"
+                                    key={`service-${service.id}`}
+                                >
+                                    <div
+                                        className="card border-0 shadow-sm h-100"
+                                        style={{
+                                            borderRadius:
+                                                "16px",
+                                        }}
                                     >
-                                        Remove
-                                    </button>
+                                        <div className="card-body p-4">
+                                            <div className="d-flex justify-content-between align-items-start mb-3">
+                                                <div
+                                                    className="rounded-circle d-flex align-items-center justify-content-center"
+                                                    style={{
+                                                        width:
+                                                            "55px",
+                                                        height:
+                                                            "55px",
+                                                        backgroundColor:
+                                                            "#e9def5",
+                                                        color:
+                                                            "#80609e",
+                                                    }}
+                                                >
+                                                    <i
+                                                        className="bi bi-tooth"
+                                                        style={{
+                                                            fontSize:
+                                                                "25px",
+                                                        }}
+                                                    ></i>
+                                                </div>
+
+                                                <span
+                                                    className="badge"
+                                                    style={{
+                                                        backgroundColor:
+                                                            "#f3efff",
+                                                        color:
+                                                            "#80609e",
+                                                    }}
+                                                >
+                                                    ID:{" "}
+                                                    {
+                                                        service.id
+                                                    }
+                                                </span>
+                                            </div>
+
+                                            <h5
+                                                className="fw-bold mb-2"
+                                                style={{
+                                                    color:
+                                                        "#80609e",
+                                                }}
+                                            >
+                                                {
+                                                    service.name
+                                                }
+                                            </h5>
+
+                                            <h6
+                                                className="fw-bold mb-3"
+                                                style={{
+                                                    color:
+                                                        "#9b7bb8",
+                                                }}
+                                            >
+                                                {formatPrice(
+                                                    service.price
+                                                )}
+                                            </h6>
+
+                                            <p
+                                                className="text-muted mb-4"
+                                                style={{
+                                                    minHeight:
+                                                        "48px",
+                                                }}
+                                            >
+                                                {service.description ||
+                                                    "No description available."}
+                                            </p>
+
+                                            <div className="d-flex gap-2">
+                                                {/* EDIT */}
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm flex-fill"
+                                                    onClick={() =>
+                                                        openEditModal(
+                                                            service
+                                                        )
+                                                    }
+                                                    style={{
+                                                        backgroundColor:
+                                                            "#e9def5",
+                                                        color:
+                                                            "#80609e",
+                                                        border:
+                                                            "none",
+                                                        borderRadius:
+                                                            "8px",
+                                                    }}
+                                                >
+                                                    <i className="bi bi-pencil me-1"></i>
+                                                    Edit
+                                                </button>
+
+                                                {/* DELETE */}
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm flex-fill"
+                                                    onClick={() =>
+                                                        openDeleteModal(
+                                                            service
+                                                        )
+                                                    }
+                                                    style={{
+                                                        backgroundColor:
+                                                            "#f8d7da",
+                                                        color:
+                                                            "#842029",
+                                                        border:
+                                                            "none",
+                                                        borderRadius:
+                                                            "8px",
+                                                    }}
+                                                >
+                                                    <i className="bi bi-trash me-1"></i>
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        ))
-                    )}
-                </section>
+                            )
+                        )}
+                    </div>
+                )}
 
-                <section className="add-section">
-                    <h2>➕ Add New Service</h2>
+                {/* =================================================
+                    ADD SERVICE MODAL
+                ================================================= */}
 
-                    <form onSubmit={addService}>
-                        <div className="form-grid">
-                            <div className="form-group">
-                                <label>Service Name</label>
-
-                                <input
-                                    type="text"
-                                    value={name}
-                                    onChange={(e) =>
-                                        setName(e.target.value)
+                {showAddModal && (
+                    <div
+                        className="modal fade show d-block"
+                        tabIndex="-1"
+                        style={{
+                            backgroundColor:
+                                "rgba(0,0,0,0.5)",
+                        }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div
+                                className="modal-content border-0"
+                                style={{
+                                    borderRadius:
+                                        "16px",
+                                }}
+                            >
+                                <form
+                                    onSubmit={
+                                        handleAddService
                                     }
-                                    placeholder="Example: Root Canal"
-                                />
-                            </div>
+                                >
+                                    <div className="modal-header border-0">
+                                        <h5
+                                            className="modal-title fw-bold"
+                                            style={{
+                                                color:
+                                                    "#80609e",
+                                            }}
+                                        >
+                                            <i className="bi bi-plus-circle me-2"></i>
+                                            Add Service
+                                        </h5>
 
-                            <div className="form-group">
-                                <label>Price</label>
+                                        <button
+                                            type="button"
+                                            className="btn-close"
+                                            onClick={
+                                                closeAddModal
+                                            }
+                                        ></button>
+                                    </div>
 
-                                <input
-                                    type="number"
-                                    value={price}
-                                    onChange={(e) =>
-                                        setPrice(e.target.value)
-                                    }
-                                    placeholder="Example: 3000"
-                                />
-                            </div>
+                                    <div className="modal-body px-4">
+                                        <div className="mb-3">
+                                            <label className="form-label fw-semibold">
+                                                Service Name
+                                            </label>
 
-                            <div className="form-group full">
-                                <label>Description</label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                value={
+                                                    serviceName
+                                                }
+                                                onChange={(
+                                                    e
+                                                ) =>
+                                                    setServiceName(
+                                                        e
+                                                            .target
+                                                            .value
+                                                    )
+                                                }
+                                                placeholder="Enter service name"
+                                                required
+                                            />
+                                        </div>
 
-                                <textarea
-                                    value={description}
-                                    onChange={(e) =>
-                                        setDescription(e.target.value)
-                                    }
-                                    placeholder="Enter a short description..."
-                                />
+                                        <div className="mb-3">
+                                            <label className="form-label fw-semibold">
+                                                Price
+                                            </label>
+
+                                            <input
+                                                type="number"
+                                                className="form-control"
+                                                value={
+                                                    servicePrice
+                                                }
+                                                onChange={(
+                                                    e
+                                                ) =>
+                                                    setServicePrice(
+                                                        e
+                                                            .target
+                                                            .value
+                                                    )
+                                                }
+                                                placeholder="Enter price"
+                                                min="0"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label fw-semibold">
+                                                Description
+                                            </label>
+
+                                            <textarea
+                                                className="form-control"
+                                                rows="4"
+                                                value={
+                                                    serviceDescription
+                                                }
+                                                onChange={(
+                                                    e
+                                                ) =>
+                                                    setServiceDescription(
+                                                        e
+                                                            .target
+                                                            .value
+                                                    )
+                                                }
+                                                placeholder="Enter service description"
+                                            ></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div className="modal-footer border-0">
+                                        <button
+                                            type="button"
+                                            className="btn btn-light"
+                                            onClick={
+                                                closeAddModal
+                                            }
+                                        >
+                                            Cancel
+                                        </button>
+
+                                        <button
+                                            type="submit"
+                                            className="btn"
+                                            disabled={
+                                                loading
+                                            }
+                                            style={{
+                                                backgroundColor:
+                                                    "#9b7bb8",
+                                                color:
+                                                    "#ffffff",
+                                            }}
+                                        >
+                                            {loading
+                                                ? "Saving..."
+                                                : "Add Service"}
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
+                    </div>
+                )}
 
-                        <button
-                            type="submit"
-                            className="add-btn"
+                {/* =================================================
+                    EDIT SERVICE MODAL
+                ================================================= */}
+
+                {showEditModal && (
+                    <div
+                        className="modal fade show d-block"
+                        tabIndex="-1"
+                        style={{
+                            backgroundColor:
+                                "rgba(0,0,0,0.5)",
+                        }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div
+                                className="modal-content border-0"
+                                style={{
+                                    borderRadius:
+                                        "16px",
+                                }}
+                            >
+                                <form
+                                    onSubmit={
+                                        handleEditService
+                                    }
+                                >
+                                    <div className="modal-header border-0">
+                                        <h5
+                                            className="modal-title fw-bold"
+                                            style={{
+                                                color:
+                                                    "#80609e",
+                                            }}
+                                        >
+                                            <i className="bi bi-pencil-square me-2"></i>
+                                            Edit Service
+                                        </h5>
+
+                                        <button
+                                            type="button"
+                                            className="btn-close"
+                                            onClick={
+                                                closeEditModal
+                                            }
+                                        ></button>
+                                    </div>
+
+                                    <div className="modal-body px-4">
+                                        {editingService && (
+                                            <div
+                                                className="alert mb-3"
+                                                style={{
+                                                    backgroundColor:
+                                                        "#f3efff",
+                                                    color:
+                                                        "#80609e",
+                                                    border:
+                                                        "none",
+                                                }}
+                                            >
+                                                Editing Service
+                                                ID:{" "}
+                                                <strong>
+                                                    {
+                                                        editingService.id
+                                                    }
+                                                </strong>
+                                            </div>
+                                        )}
+
+                                        <div className="mb-3">
+                                            <label className="form-label fw-semibold">
+                                                Service Name
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                value={
+                                                    serviceName
+                                                }
+                                                onChange={(
+                                                    e
+                                                ) =>
+                                                    setServiceName(
+                                                        e
+                                                            .target
+                                                            .value
+                                                    )
+                                                }
+                                                placeholder="Enter service name"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label fw-semibold">
+                                                Price
+                                            </label>
+
+                                            <input
+                                                type="number"
+                                                className="form-control"
+                                                value={
+                                                    servicePrice
+                                                }
+                                                onChange={(
+                                                    e
+                                                ) =>
+                                                    setServicePrice(
+                                                        e
+                                                            .target
+                                                            .value
+                                                    )
+                                                }
+                                                placeholder="Enter price"
+                                                min="0"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label fw-semibold">
+                                                Description
+                                            </label>
+
+                                            <textarea
+                                                className="form-control"
+                                                rows="4"
+                                                value={
+                                                    serviceDescription
+                                                }
+                                                onChange={(
+                                                    e
+                                                ) =>
+                                                    setServiceDescription(
+                                                        e
+                                                            .target
+                                                            .value
+                                                    )
+                                                }
+                                                placeholder="Enter service description"
+                                            ></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div className="modal-footer border-0">
+                                        <button
+                                            type="button"
+                                            className="btn btn-light"
+                                            onClick={
+                                                closeEditModal
+                                            }
+                                        >
+                                            Cancel
+                                        </button>
+
+                                        <button
+                                            type="submit"
+                                            className="btn"
+                                            disabled={
+                                                loading
+                                            }
+                                            style={{
+                                                backgroundColor:
+                                                    "#9b7bb8",
+                                                color:
+                                                    "#ffffff",
+                                            }}
+                                        >
+                                            {loading
+                                                ? "Saving..."
+                                                : "Save Changes"}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* =================================================
+                    DELETE CONFIRMATION MODAL
+                ================================================= */}
+
+                {showDeleteModal &&
+                    serviceToDelete && (
+                        <div
+                            className="modal fade show d-block"
+                            tabIndex="-1"
+                            style={{
+                                backgroundColor:
+                                    "rgba(0,0,0,0.5)",
+                            }}
                         >
-                            Add Service
-                        </button>
-                    </form>
-                </section>
-            </main>
-        </>
+                            <div className="modal-dialog modal-dialog-centered">
+                                <div
+                                    className="modal-content border-0"
+                                    style={{
+                                        borderRadius:
+                                            "16px",
+                                    }}
+                                >
+                                    <div className="modal-header border-0">
+                                        <h5
+                                            className="modal-title fw-bold"
+                                            style={{
+                                                color:
+                                                    "#842029",
+                                            }}
+                                        >
+                                            <i className="bi bi-exclamation-triangle me-2"></i>
+                                            Delete Service
+                                        </h5>
+
+                                        <button
+                                            type="button"
+                                            className="btn-close"
+                                            onClick={
+                                                closeDeleteModal
+                                            }
+                                            disabled={
+                                                loading
+                                            }
+                                        ></button>
+                                    </div>
+
+                                    <div className="modal-body px-4">
+                                        <p className="mb-3">
+                                            Are you sure you
+                                            want to delete
+                                            this service?
+                                        </p>
+
+                                        <div
+                                            className="p-3 rounded"
+                                            style={{
+                                                backgroundColor:
+                                                    "#f3efff",
+                                            }}
+                                        >
+                                            <div
+                                                className="fw-bold"
+                                                style={{
+                                                    color:
+                                                        "#80609e",
+                                                }}
+                                            >
+                                                {
+                                                    serviceToDelete.name
+                                                }
+                                            </div>
+
+                                            <div className="text-muted">
+                                                Price:{" "}
+                                                {formatPrice(
+                                                    serviceToDelete.price
+                                                )}
+                                            </div>
+
+                                            <div className="text-muted">
+                                                Service ID:{" "}
+                                                <strong>
+                                                    {
+                                                        serviceToDelete.id
+                                                    }
+                                                </strong>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="modal-footer border-0">
+                                        <button
+                                            type="button"
+                                            className="btn btn-light"
+                                            onClick={
+                                                closeDeleteModal
+                                            }
+                                            disabled={
+                                                loading
+                                            }
+                                        >
+                                            Cancel
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            className="btn"
+                                            onClick={
+                                                handleDeleteService
+                                            }
+                                            disabled={
+                                                loading
+                                            }
+                                            style={{
+                                                backgroundColor:
+                                                    "#dc3545",
+                                                color:
+                                                    "#ffffff",
+                                            }}
+                                        >
+                                            {loading
+                                                ? "Deleting..."
+                                                : "Delete"}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+            </div>
+        </div>
     );
-}
+};
+
+export default DentistServices;
