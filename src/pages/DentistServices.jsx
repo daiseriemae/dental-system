@@ -31,19 +31,19 @@ const DentistServices = () => {
         const service = (name || "").toLowerCase();
 
         if (service.includes("cleaning")) {
-            return "/images/dental-cleaning.jpg";
+            return "public/dentist-cleaning-teeth.jpeg";
         }
 
         if (service.includes("filling")) {
-            return "/images/tooth-filling.jpg";
+            return "public/tooth-filling.webp";
         }
 
         if (service.includes("whitening")) {
-            return "/images/teeth-whitening.jpg";
+            return "public/teeth-whitening.webp";
         }
 
         if (service.includes("extraction")) {
-            return "/images/tooth-extraction.jpg";
+            return "public/extraction.jpg";
         }
 
         if (
@@ -51,14 +51,14 @@ const DentistServices = () => {
             service.includes("checkup") ||
             service.includes("check up")
         ) {
-            return "/images/dental-checkup.jpg";
+            return "public/what-to-expect-dental-checkup-facts.jpg";
         }
 
         if (service.includes("braces")) {
-            return "/images/braces.jpg";
+            return "public/brace.jfif";
         }
 
-        return "/images/dental-cleaning.jpg";
+        return "public/dentist-cleaning-teeth.jpeg";
     };
 
     /* =====================================================
