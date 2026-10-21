@@ -479,7 +479,7 @@ app.delete("/api/patients/:id", (req, res) => {
 // =========================================================
 app.listen(PORT, () => {
     console.log("----------------------------------------");
-    console.log(`DentalCare API running at http://localhost:${PORT}`);
+    console.log(`DentalCare API running at https://dental-system-rzqb.onrender.com`);
     console.log("Patients API:     /api/patients");
     console.log("Appointments API: /api/appointment");
     console.log("Services API:     /api/services");
