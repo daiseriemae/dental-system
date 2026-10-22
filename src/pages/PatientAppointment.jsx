@@ -13,7 +13,7 @@ export default function PatientAppointment() {
     const [messageType, setMessageType] = useState("success");
     const [cancellingId, setCancellingId] = useState(null);
 
-    const api_url = "http://localhost:8080/api/appointment";
+    const API_URL = `${import.meta.env.VITE_API_URL}/api/services`;
 
     useEffect(() => {
         loadAppointments();
@@ -21,7 +21,7 @@ export default function PatientAppointment() {
 
     async function loadAppointments() {
         try {
-            const response = await fetch(api_url);
+            const response = await fetch(API_URL);
 
             if (!response.ok) {
                 throw new Error("Failed to load appointments");
@@ -48,7 +48,7 @@ export default function PatientAppointment() {
         showMessage("");
 
         try {
-            const response = await fetch(api_url, {
+            const response = await fetch(API_URL, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -130,7 +130,7 @@ export default function PatientAppointment() {
 
         try {
             const response = await fetch(
-                `${api_url}/${encodeURIComponent(appointmentId)}/status`,
+                `${API_URL}/${encodeURIComponent(appointmentId)}/status`,
                 {
                     method: "PUT",
                     headers: {

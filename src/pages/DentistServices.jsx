@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
-const API_URL = "http://localhost:8080/api/services";
+const API_URL = `${import.meta.env.VITE_API_URL}/api/services`;
 
 const DentistServices = () => {
     const [services, setServices] = useState([]);
