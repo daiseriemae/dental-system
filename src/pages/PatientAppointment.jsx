@@ -13,7 +13,7 @@ export default function PatientAppointment() {
     const [messageType, setMessageType] = useState("success");
     const [cancellingId, setCancellingId] = useState(null);
 
-    const API_URL = `${import.meta.env.VITE_API_URL}/api/appointments`;
+    const API_URL = `${import.meta.env.VITE_API_URL}/api/appointment`;
 
     useEffect(() => {
         loadAppointments();
