@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
-const API_URL = `${import.meta.env.VITE_API_URL.replace(/\/+$/, "")}/api/patients`;
+const BASE_URL =
+    import.meta.env.VITE_API_URL ||
+    "https://dental-system-rzqb.onrender.com";
+
+const API_URL = `${BASE_URL.replace(/\/+$/, "")}/api/patients`;
 
 export default function DentistPatientRecord() {
     const [patients, setPatients] = useState([]);

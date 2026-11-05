@@ -1,8 +1,12 @@
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
-const API_URL = `${import.meta.env.VITE_API_URL.replace(/\/+$/, "")}/api/services`;
+const BASE_URL =
+    import.meta.env.VITE_API_URL ||
+    "https://dental-system-rzqb.onrender.com";
+
+const API_URL = `${BASE_URL.replace(/\/+$/, "")}/api/services`;
 
 const DentistServices = () => {
     const [services, setServices] = useState([]);
@@ -31,19 +35,19 @@ const DentistServices = () => {
         const service = (name || "").toLowerCase();
 
         if (service.includes("cleaning")) {
-            return "dentist-cleaning-teeth.jpeg";
+            return "/dentist-cleaning-teeth.jpeg";
         }
 
         if (service.includes("filling")) {
-            return "tooth-filling.webp";
+            return "/tooth-filling.webp";
         }
 
         if (service.includes("whitening")) {
-            return "teeth-whitening.webp";
+            return "/teeth-whitening.webp";
         }
 
         if (service.includes("extraction")) {
-            return "extraction.jpg";
+            return "/extraction.jpg";
         }
 
         if (
@@ -51,14 +55,14 @@ const DentistServices = () => {
             service.includes("checkup") ||
             service.includes("check up")
         ) {
-            return "what-to-expect-dental-checkup-facts.jpg";
+            return "/what-to-expect-dental-checkup-facts.jpg";
         }
 
         if (service.includes("braces")) {
-            return "brace.jfif";
+            return "/brace.jfif";
         }
 
-        return "dentist-cleaning-teeth.jpeg";
+        return "/dentist-cleaning-teeth.jpeg";
     };
 
     /* =====================================================
