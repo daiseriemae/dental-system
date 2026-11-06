@@ -1,73 +1,102 @@
+
 const express = require("express");
 const cors = require("cors");
 
 const app = express();
-
-app.use(cors());
-app.use(express.json());
-
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-// =========================================================
-// MIDDLEWARE
-// =========================================================
 app.use(cors());
 app.use(express.json());
 
-// =========================================================
-// SERVICES
-// =========================================================
+// Log every request that reaches THIS backend.
+app.use((req, res, next) => {
+    console.log(
+        `\n[${new Date().toLocaleString()}] ${req.method} ${req.originalUrl}`
+    );
+    next();
+});
+
+// NOTE: Data is currently stored in memory and resets when the server restarts.
 const defaultServices = [
     { id: 1, name: "Dental Cleaning", price: 800, description: "Professional dental cleaning" },
-    { id: 2, name: "Check-up", price: 500, description: "General dental check-up" },
-    { id: 3, name: "Filling", price: 1200, description: "Dental filling treatment" },
-    { id: 4, name: "Whitening", price: 2500, description: "Teeth whitening treatment" },
-    { id: 5, name: "Extraction", price: 1500, description: "Tooth extraction" },
+    { id: 2, name: "Dental Check-up", price: 500, description: "General dental check-up" },
+    { id: 3, name: "Dental Filling", price: 1200, description: "Dental filling treatment" },
+    { id: 4, name: "Teeth Whitening", price: 2500, description: "Teeth whitening treatment" },
+    { id: 5, name: "Tooth Extraction", price: 1500, description: "Tooth extraction" },
     { id: 6, name: "Braces Consultation", price: 700, description: "Braces consultation" }
 ];
 
 let services = defaultServices.map(service => ({ ...service }));
-let nextServiceID = 7;
+let nextServiceId = 7;
+let appointments = [];
 
-// GET SERVICES
+let patients = [
+    { id: "P-00125", firstName: "Daiserie Mae", lastName: "", name: "Daiserie Mae", age: "", gender: "", contact: "", email: "", address: "", notes: "" },
+    { id: "P-00126", firstName: "John Michael", lastName: "Cruz", name: "John Michael Cruz", age: "", gender: "", contact: "", email: "", address: "", notes: "" },
+    { id: "P-00127", firstName: "Angela", lastName: "Reyes", name: "Angela Reyes", age: "", gender: "", contact: "", email: "", address: "", notes: "" },
+    { id: "P-00128", firstName: "Mark Anthony", lastName: "Garcia", name: "Mark Anthony Garcia", age: "", gender: "", contact: "", email: "", address: "", notes: "" },
+    { id: "P-00129", firstName: "Sofia", lastName: "Mendoza", name: "Sofia Mendoza", age: "", gender: "", contact: "", email: "", address: "", notes: "" }
+];
+
+function logBlock(title, data) {
+    console.log("\n========================================");
+    console.log(title);
+    if (data !== undefined) {
+        console.log(JSON.stringify(data, null, 2));
+    }
+    console.log("========================================\n");
+}
+
+function findServiceByIdOrName(value) {
+    return services.find(service =>
+        String(service.id) === String(value) ||
+        service.name.toLowerCase() ===
+            String(value || "").trim().toLowerCase()
+    );
+}
+
+// ROOT
+app.get("/", (req, res) => {
+    res.send("DentalCare API is running.");
+});
+
+// ==================== SERVICES ====================
+
 app.get("/api/services", (req, res) => {
     res.json(services);
 });
 
-// ADD SERVICE
 app.post("/api/services", (req, res) => {
-    const { name, price, description } = req.body;
-
-    if (!name || price === undefined || price === "") {
-        return res.status(400).json({
-            message: "Service name and price are required."
-        });
-    }
-
+    const { name, price, description = "" } = req.body;
     const numericPrice = Number(price);
 
-    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+    if (
+        !String(name || "").trim() ||
+        price === undefined ||
+        price === "" ||
+        !Number.isFinite(numericPrice) ||
+        numericPrice < 0
+    ) {
         return res.status(400).json({
-            message: "Please enter a valid price."
+            message: "A service name and valid non-negative price are required."
         });
     }
 
     const service = {
-        id: nextServiceID++,
+        id: nextServiceId++,
         name: String(name).trim(),
         price: numericPrice,
-        description: description || ""
+        description: String(description || "")
     };
 
     services.push(service);
 
-    console.log("SERVICE ADDED");
-    console.log("Service ID:", service.id);
-    console.log("Service Name:", service.name);
-    console.log("Price:", service.price);
+    logBlock("SERVICE ADDED", {
+        id: service.id,
+        name: service.name,
+        price: service.price,
+        description: service.description
+    });
 
     res.status(201).json({
         message: "Service added successfully.",
@@ -75,43 +104,74 @@ app.post("/api/services", (req, res) => {
     });
 });
 
-// UPDATE SERVICE
 app.put("/api/services/:id", (req, res) => {
-    const id = String(req.params.id);
-    const service = services.find(item => String(item.id) === id);
+    const serviceId = String(req.params.id);
 
-    console.log("UPDATE SERVICE REQUEST");
-    console.log("Service ID:", id);
+    const service = services.find(
+        item => String(item.id) === serviceId
+    );
 
     if (!service) {
+        logBlock("SERVICE UPDATE FAILED", {
+            id: serviceId,
+            reason: "Service not found"
+        });
+
         return res.status(404).json({
             message: "Service not found."
         });
     }
 
-    const { name, price, description } = req.body;
+    const body = req.body;
+    const changed = {};
 
-    if (name !== undefined) {
-        service.name = String(name).trim();
+    // Validate all provided fields before changing the service.
+    if (
+        body.name !== undefined &&
+        !String(body.name).trim()
+    ) {
+        return res.status(400).json({
+            message: "Service name cannot be empty."
+        });
     }
 
-    if (price !== undefined) {
-        const numericPrice = Number(price);
+    let numericPrice;
 
-        if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+    if (body.price !== undefined) {
+        numericPrice = Number(body.price);
+
+        if (
+            body.price === "" ||
+            !Number.isFinite(numericPrice) ||
+            numericPrice < 0
+        ) {
             return res.status(400).json({
-                message: "Please enter a valid price."
+                message: "Please enter a valid non-negative price."
             });
         }
+    }
 
+    // Update and record only the fields supplied by the frontend.
+    if (body.name !== undefined) {
+        service.name = String(body.name).trim();
+        changed.name = service.name;
+    }
+
+    if (body.price !== undefined) {
         service.price = numericPrice;
+        changed.price = numericPrice;
     }
 
-    if (description !== undefined) {
-        service.description = description;
+    if (body.description !== undefined) {
+        service.description = String(body.description || "");
+        changed.description = service.description;
     }
 
-    console.log("SERVICE UPDATED:", service.name);
+    // Print the ID and only the fields sent in the update.
+    logBlock("SERVICE UPDATED — CHANGED FIELDS ONLY", {
+        id: service.id,
+        ...changed
+    });
 
     res.json({
         message: "Service updated successfully.",
@@ -119,37 +179,32 @@ app.put("/api/services/:id", (req, res) => {
     });
 });
 
-// DELETE SERVICE
 app.delete("/api/services/:id", (req, res) => {
-    const id = String(req.params.id);
-
-    console.log("DELETE SERVICE REQUEST");
-    console.log("Service ID:", id);
-
     const index = services.findIndex(
-        item => String(item.id) === id
+        item => String(item.id) === String(req.params.id)
     );
 
-    if (index === -1) {
+    if (index < 0) {
         return res.status(404).json({
             message: "Service not found."
         });
     }
 
-    const deletedService = services.splice(index, 1)[0];
+    const [deleted] = services.splice(index, 1);
 
-    console.log("SERVICE DELETED:", deletedService.name);
+    logBlock("SERVICE DELETED", deleted);
 
     res.json({
         message: "Service deleted successfully.",
-        service: deletedService
+        service: deleted
     });
 });
 
-// RESTORE DEFAULT SERVICES
 app.post("/api/services/restore", (req, res) => {
     services = defaultServices.map(service => ({ ...service }));
-    nextServiceID = 7;
+    nextServiceId = 7;
+
+    logBlock("DEFAULT SERVICES RESTORED", services);
 
     res.json({
         message: "Default services restored successfully.",
@@ -157,22 +212,32 @@ app.post("/api/services/restore", (req, res) => {
     });
 });
 
-// =========================================================
-// APPOINTMENTS
-// =========================================================
-let appointments = [];
+// Log service selection from the patient frontend.
+app.post("/api/logs/service-selection", (req, res) => {
+    const { serviceId, serviceName, price } = req.body;
 
-// GET APPOINTMENTS
-app.get("/api/appointment", (req, res) => {
-    res.json(appointments);
+    logBlock("PATIENT SELECTED A SERVICE", {
+        serviceId: serviceId ?? null,
+        serviceName: serviceName || "",
+        price: price ?? null
+    });
+
+    res.json({ message: "Service selection logged." });
 });
 
-// CREATE APPOINTMENT
-app.post("/api/appointment", (req, res) => {
+// ==================== APPOINTMENTS ====================
+
+function listAppointments(req, res) {
+    res.json(appointments);
+}
+
+function createAppointment(req, res) {
     const {
         patientId,
         patientName,
         service,
+        serviceId,
+        price,
         dentist,
         date,
         time,
@@ -185,69 +250,63 @@ app.post("/api/appointment", (req, res) => {
         });
     }
 
+    const currentService =
+        serviceId !== undefined && serviceId !== null
+            ? findServiceByIdOrName(serviceId)
+            : findServiceByIdOrName(service);
+
+    if (
+        serviceId !== undefined &&
+        serviceId !== null &&
+        !currentService
+    ) {
+        return res.status(400).json({
+            message: "The selected service no longer exists. Please reload the service list."
+        });
+    }
+
     const appointment = {
-        id: Date.now().toString(),
-        patientId,
-        patientName: patientName || "",
-        service,
-        dentist,
-        date,
-        time,
-        notes: notes || "",
-        status: "Pending"
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        patientId: String(patientId),
+        patientName: String(patientName || ""),
+        service: currentService ? currentService.name : String(service),
+        serviceId: currentService ? currentService.id : (serviceId ?? null),
+        price: currentService
+            ? currentService.price
+            : (price === undefined ? null : Number(price)),
+        dentist: String(dentist),
+        date: String(date),
+        time: String(time),
+        notes: String(notes || ""),
+        status: "Pending",
+        createdAt: new Date().toISOString()
     };
 
     appointments.push(appointment);
 
-    console.log("----------------------------------------");
-    console.log("NEW APPOINTMENT");
-    console.log("Appointment ID:", appointment.id);
-    console.log("Patient ID:", appointment.patientId);
-    console.log("Patient Name:", appointment.patientName);
-    console.log("Service:", appointment.service);
-    console.log("Dentist:", appointment.dentist);
-    console.log("Date:", appointment.date);
-    console.log("Time:", appointment.time);
-    console.log("Status:", appointment.status);
-    console.log("----------------------------------------");
+    logBlock("NEW APPOINTMENT CREATED", appointment);
 
     res.status(201).json({
         message: "Appointment created successfully.",
         appointment
     });
-});
+}
 
-// UPDATE APPOINTMENT STATUS
-app.put("/api/appointment/:id/status", (req, res) => {
-    const id = String(req.params.id);
-    const { status } = req.body;
-
-    console.log("----------------------------------------");
-    console.log("UPDATE APPOINTMENT STATUS");
-    console.log("Appointment ID:", id);
-    console.log("Requested Status:", status);
-
+function updateAppointmentStatus(req, res) {
     const appointment = appointments.find(
-        item => String(item.id) === id
+        item => String(item.id) === String(req.params.id)
     );
 
     if (!appointment) {
-        console.log("Appointment not found.");
-        console.log("----------------------------------------");
-
         return res.status(404).json({
             message: "Appointment not found."
         });
     }
 
-    const allowedStatuses = [
-        "Pending",
-        "Confirmed",
-        "Completed",
-        "Cancelled"
-    ];
+    const { status } = req.body;
+    const allowed = ["Pending", "Confirmed", "Completed", "Cancelled"];
 
-    if (!allowedStatuses.includes(status)) {
+    if (!allowed.includes(status)) {
         return res.status(400).json({
             message: "Invalid appointment status."
         });
@@ -264,97 +323,37 @@ app.put("/api/appointment/:id/status", (req, res) => {
 
     appointment.status = status;
 
-    console.log("APPOINTMENT STATUS UPDATED");
-    console.log("Service:", appointment.service);
-    console.log("Dentist:", appointment.dentist);
-    console.log("Date:", appointment.date);
-    console.log("Time:", appointment.time);
-    console.log("New Status:", appointment.status);
-    console.log("----------------------------------------");
+    logBlock("APPOINTMENT STATUS UPDATED", {
+        id: appointment.id,
+        patientId: appointment.patientId,
+        service: appointment.service,
+        status: appointment.status
+    });
 
     res.json({
         message: "Appointment status updated successfully.",
         appointment
     });
-});
+}
 
-// =========================================================
-// PATIENTS
-// =========================================================
-let patients = [
-    {
-        id: "P-00125",
-        firstName: "Daiserie Mae",
-        lastName: "",
-        name: "Daiserie Mae",
-        age: "",
-        gender: "",
-        contact: "",
-        email: "",
-        address: "",
-        notes: ""
-    },
-    {
-        id: "P-00126",
-        firstName: "John Michael",
-        lastName: "Cruz",
-        name: "John Michael Cruz",
-        age: "",
-        gender: "",
-        contact: "",
-        email: "",
-        address: "",
-        notes: ""
-    },
-    {
-        id: "P-00127",
-        firstName: "Angela",
-        lastName: "Reyes",
-        name: "Angela Reyes",
-        age: "",
-        gender: "",
-        contact: "",
-        email: "",
-        address: "",
-        notes: ""
-    },
-    {
-        id: "P-00128",
-        firstName: "Mark Anthony",
-        lastName: "Garcia",
-        name: "Mark Anthony Garcia",
-        age: "",
-        gender: "",
-        contact: "",
-        email: "",
-        address: "",
-        notes: ""
-    },
-    {
-        id: "P-00129",
-        firstName: "Sofia",
-        lastName: "Mendoza",
-        name: "Sofia Mendoza",
-        age: "",
-        gender: "",
-        contact: "",
-        email: "",
-        address: "",
-        notes: ""
-    }
-];
+app.get("/api/appointment", listAppointments);
+app.get("/api/appointments", listAppointments);
 
-// GET ALL PATIENTS
+app.post("/api/appointment", createAppointment);
+app.post("/api/appointments", createAppointment);
+
+app.put("/api/appointment/:id/status", updateAppointmentStatus);
+app.put("/api/appointments/:id/status", updateAppointmentStatus);
+
+// ==================== PATIENTS ====================
+
 app.get("/api/patients", (req, res) => {
     res.json(patients);
 });
 
-// GET ONE PATIENT
 app.get("/api/patients/:id", (req, res) => {
-    const id = String(req.params.id);
-
     const patient = patients.find(
-        item => String(item.id) === id
+        item => String(item.id) === String(req.params.id)
     );
 
     if (!patient) {
@@ -366,16 +365,9 @@ app.get("/api/patients/:id", (req, res) => {
     res.json(patient);
 });
 
-// UPDATE PATIENT
 app.put("/api/patients/:id", (req, res) => {
-    const id = String(req.params.id);
-
-    console.log("----------------------------------------");
-    console.log("UPDATE PATIENT REQUEST");
-    console.log("Patient ID:", id);
-
     const patient = patients.find(
-        item => String(item.id) === id
+        item => String(item.id) === String(req.params.id)
     );
 
     if (!patient) {
@@ -384,7 +376,7 @@ app.put("/api/patients/:id", (req, res) => {
         });
     }
 
-    const allowedFields = [
+    const fields = [
         "firstName",
         "lastName",
         "name",
@@ -396,12 +388,12 @@ app.put("/api/patients/:id", (req, res) => {
         "notes"
     ];
 
-    const changedData = {};
+    const changed = {};
 
-    allowedFields.forEach(field => {
+    fields.forEach(field => {
         if (req.body[field] !== undefined) {
             patient[field] = req.body[field];
-            changedData[field] = req.body[field];
+            changed[field] = req.body[field];
         }
     });
 
@@ -411,11 +403,14 @@ app.put("/api/patients/:id", (req, res) => {
     ) {
         patient.name =
             `${patient.firstName || ""} ${patient.lastName || ""}`.trim();
+
+        changed.name = patient.name;
     }
 
-    console.log("Changed Data:", changedData);
-    console.log("Patient updated:", patient.id);
-    console.log("----------------------------------------");
+    logBlock("PATIENT UPDATED — CHANGED FIELDS", {
+        id: patient.id,
+        changed
+    });
 
     res.json({
         message: "Patient updated successfully.",
@@ -423,13 +418,9 @@ app.put("/api/patients/:id", (req, res) => {
     });
 });
 
-// UPDATE PATIENT NOTES
 app.put("/api/patients/:id/notes", (req, res) => {
-    const id = String(req.params.id);
-    const { notes } = req.body;
-
     const patient = patients.find(
-        item => String(item.id) === id
+        item => String(item.id) === String(req.params.id)
     );
 
     if (!patient) {
@@ -438,10 +429,12 @@ app.put("/api/patients/:id/notes", (req, res) => {
         });
     }
 
-    patient.notes = notes || "";
+    patient.notes = String(req.body.notes || "");
 
-    console.log("PATIENT NOTES UPDATED");
-    console.log("Patient ID:", patient.id);
+    logBlock("PATIENT NOTES UPDATED", {
+        id: patient.id,
+        notes: patient.notes
+    });
 
     res.json({
         message: "Patient notes updated successfully.",
@@ -449,39 +442,33 @@ app.put("/api/patients/:id/notes", (req, res) => {
     });
 });
 
-// DELETE PATIENT
 app.delete("/api/patients/:id", (req, res) => {
-    const id = String(req.params.id);
-
     const index = patients.findIndex(
-        item => String(item.id) === id
+        item => String(item.id) === String(req.params.id)
     );
 
-    if (index === -1) {
+    if (index < 0) {
         return res.status(404).json({
             message: "Patient not found."
         });
     }
 
-    const deletedPatient = patients.splice(index, 1)[0];
+    const [deleted] = patients.splice(index, 1);
 
-    console.log("PATIENT DELETED");
-    console.log("Patient ID:", deletedPatient.id);
+    logBlock("PATIENT DELETED", deleted);
 
     res.json({
         message: "Patient deleted successfully.",
-        patient: deletedPatient
+        patient: deleted
     });
 });
 
-// =========================================================
-// START SERVER
-// =========================================================
+// Start the backend once, after registering all routes.
 app.listen(PORT, () => {
-    console.log("----------------------------------------");
-    console.log(`DentalCare API running at https://dental-system-rzqb.onrender.com`);
-    console.log("Patients API:     /api/patients");
-    console.log("Appointments API: /api/appointment");
-    console.log("Services API:     /api/services");
-    console.log("----------------------------------------");
+    console.log("\n========================================");
+    console.log(`DentalCare API running at http://localhost:${PORT}`);
+    console.log("Services:     /api/services");
+    console.log("Appointments: /api/appointments and /api/appointment");
+    console.log("Patients:     /api/patients");
+    console.log("========================================\n");
 });

@@ -3,7 +3,7 @@ import Sidebar from "./Sidebar.jsx";
 
 const BASE_URL =
     import.meta.env.VITE_API_URL ||
-    "https://dental-system-rzqb.onrender.com";
+    "http://localhost:8080";
 
 const API_URL = `${BASE_URL.replace(/\/+$/, "")}/api/services`;
 
