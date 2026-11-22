@@ -342,94 +342,120 @@ function handleServiceChange(event) {
 }
 
 
-    // SUBMIT APPOINTMENT
-    async function formSubmit(event) {
-        event.preventDefault();
-        setMessage("");
+// SUBMIT APPOINTMENT
+async function formSubmit(event) {
+    event.preventDefault();
+    setMessage("");
 
-        if (!patientId || !patientName) {
-            showMessage(
-                "Patient information is not loaded. Please log in again.",
-                "error"
-            );
-            return;
-        }
+    // Prevent duplicate submissions
+    if (submitting) return;
 
-        if (!selectedService) {
-            showMessage(
-                "Please select a dental service.",
-                "error"
-            );
-            return;
-        }
-
-        if (!getServiceName(selectedService)) {
-            showMessage(
-                "The selected service has no valid name.",
-                "error"
-            );
-            return;
-        }
-
-        setSubmitting(true);
-
-        try {
-            const response = await fetch(API_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    patientId: patientId,
-                    patientName: patientName,
-
-                    service: getServiceName(selectedService),
-                    serviceId: getServiceId(selectedService),
-                    price: getServicePrice(selectedService),
-
-                    dentist,
-                    date,
-                    time,
-                    notes
-                })
-            });
-
-            const data = await readResponse(response);
-
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Failed to submit appointment."
-                );
-            }
-
-            showMessage(
-                "Appointment request submitted successfully!"
-            );
-
-            setServiceId("");
-            setDentist("");
-            setDate("");
-            setTime("");
-            setNotes("");
-
-            await loadAppointments();
-
-        } catch (error) {
-            console.error(
-                "Create appointment failed:",
-                error
-            );
-
-            showMessage(
-                error.message ||
-                "Something went wrong. Check your backend server.",
-                "error"
-            );
-
-        } finally {
-            setSubmitting(false);
-        }
+    // 1. Validate patient information
+    if (!patientId || !patientName) {
+        showMessage(
+            "Patient information is not loaded. Please log in again.",
+            "error"
+        );
+        return;
     }
+
+    // 2. Validate selected dental service
+    if (!serviceId || !selectedService) {
+        showMessage(
+            "Please select a dental service.",
+            "error"
+        );
+        return;
+    }
+
+    const serviceName = getServiceName(selectedService);
+    const selectedServiceId = getServiceId(selectedService);
+    const servicePrice = getServicePrice(selectedService);
+
+    if (!serviceName) {
+        showMessage(
+            "The selected dental service has no valid name.",
+            "error"
+        );
+        return;
+    }
+
+    // 3. Validate appointment details
+    if (!dentist || !date || !time) {
+        showMessage(
+            "Please select a dentist, appointment date, and time.",
+            "error"
+        );
+        return;
+    }
+
+    setSubmitting(true);
+
+    try {
+        // 4. Prepare appointment data
+        const appointmentData = {
+            patientId: patientId,
+            patientName: patientName,
+            service: serviceName,
+            serviceId: selectedServiceId,
+            price: servicePrice,
+            dentist: dentist,
+            date: date,
+            time: time,
+            notes: notes || ""
+        };
+
+        console.log("Submitting appointment:", appointmentData);
+
+        // 5. Send appointment to backend
+        const response = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(appointmentData)
+        });
+
+        const data = await readResponse(response);
+
+        if (!response.ok) {
+            throw new Error(
+                data?.message ||
+                data?.error ||
+                `Appointment submission failed. Server returned ${response.status}.`
+            );
+        }
+
+        // 6. Show success message
+        showMessage(
+            data?.message ||
+            "Appointment request submitted successfully!",
+            "success"
+        );
+
+        // 7. Reset appointment form
+        setServiceId("");
+        setDentist("");
+        setDate("");
+        setTime("");
+        setNotes("");
+
+        // 8. Refresh appointment list
+        await loadAppointments();
+
+    } catch (error) {
+        console.error("Create appointment failed:", error);
+
+        showMessage(
+            error.message ||
+            "Unable to submit appointment. Please check your server.",
+            "error"
+        );
+
+    } finally {
+        setSubmitting(false);
+    }
+}
 
     // CANCEL APPOINTMENT
     async function cancelAppointment(appointment) {
