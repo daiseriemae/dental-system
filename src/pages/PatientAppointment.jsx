@@ -1,11 +1,13 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Sidebar from "./Sidebar.jsx";
-
 
 const BASE_URL = "https://dental-system-rzqb.onrender.com";
 const API_URL = `${BASE_URL}/api/patient_appoint`;
+const PATIENT_API = `${BASE_URL}/api/patients`;
+const SERVICES_API = `${BASE_URL}/api/services`;
 
+// SERVICE HELPERS
 const getServiceId = (item) =>
     item?.id ??
     item?._id ??
@@ -30,90 +32,64 @@ const getServicePrice = (item) =>
 const getServiceValue = (item) =>
     String(getServiceId(item) ?? getServiceName(item));
 
-const normalizeServiceName = (name) =>
-    String(name || "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
-
-const serviceNameGroups = [
-    ["dentalcheckup", "checkup", "dentalexamination"],
-    ["teethcleaning", "dentalcleaning", "cleaning"],
-    ["dentalfilling", "filling"],
-    ["teethwhitening", "whitening"],
-    ["toothextraction", "extraction"],
-    ["bracesconsultation", "orthodonticconsultation"]
-];
-
-function sameServiceName(a, b) {
-    const first = normalizeServiceName(a);
-    const second = normalizeServiceName(b);
-
-    if (first === second) return true;
-
-    return serviceNameGroups.some(
-        group =>
-            group.includes(first) &&
-            group.includes(second)
-    );
-}
+const formatPrice = (price) =>
+    Number(price || 0).toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
 
 export default function PatientAppointment() {
     const [appointments, setAppointments] = useState([]);
     const [services, setServices] = useState([]);
 
-    // LOGGED-IN PATIENT
+    // PATIENT INFORMATION
     const [patientId, setPatientId] = useState("");
     const [patientName, setPatientName] = useState("");
     const [loadingPatient, setLoadingPatient] = useState(true);
 
+    // APPOINTMENT FORM
     const [serviceId, setServiceId] = useState("");
     const [dentist, setDentist] = useState("");
     const [date, setDate] = useState("");
     const [time, setTime] = useState("");
     const [notes, setNotes] = useState("");
 
+    // LOADING AND MESSAGES
     const [message, setMessage] = useState("");
     const [messageType, setMessageType] = useState("success");
-
-    const [cancellingId, setCancellingId] = useState(null);
     const [loadingServices, setLoadingServices] = useState(true);
+    const [loadingAppointments, setLoadingAppointments] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [cancellingId, setCancellingId] = useState(null);
 
     const selectedService =
         services.find(
             item => getServiceValue(item) === String(serviceId)
         ) || null;
 
-    useEffect(() => {
-        loadPatient();
-        loadServices();
-    }, []);
+    // READ SERVER RESPONSE
+    async function readResponse(response) {
+        const text = await response.text();
 
-    useEffect(() => {
-        if (patientId) {
-            loadAppointments();
+        if (!text) return {};
+
+        try {
+            return JSON.parse(text);
+        } catch {
+            return {
+                message: text
+            };
         }
-    }, [patientId]);
+    }
 
+    // SHOW MESSAGE
     function showMessage(text, type = "success") {
         setMessage(text);
         setMessageType(type);
     }
 
-    async function readResponse(response) {
-        const text = await response.text();
-
-        try {
-            return text ? JSON.parse(text) : {};
-        } catch {
-            return {
-                message: text || "Unexpected server response."
-            };
-        }
-    }
-
-    // LOAD LOGGED-IN PATIENT FROM MYSQL
-    async function loadPatient() {
+    // LOAD PATIENT
+    const loadPatient = useCallback(async () => {
         setLoadingPatient(true);
 
         try {
@@ -121,54 +97,61 @@ export default function PatientAppointment() {
 
             if (!email) {
                 throw new Error(
-                    "Your login email was not found. Please log in again."
+                    "Login email not found. Please log in again."
                 );
             }
 
             const response = await fetch(
-                `${BASE_URL}/api/patients/by-email/${encodeURIComponent(email)}`
+                `${PATIENT_API}/by-email/${encodeURIComponent(email)}`
             );
 
             const data = await readResponse(response);
 
             if (!response.ok) {
                 throw new Error(
-                    data.message || "Unable to find your patient record."
+                    data.message ||
+                    "Patient record not found. Please register first."
                 );
             }
 
-            const patient = data.patient || data;
+            const patient =
+                data.patient ||
+                data.data ||
+                data;
 
             const actualPatientId =
-                patient.patientCode ||
-                patient.patient_id;
-
-            if (!actualPatientId) {
-                throw new Error(
-                    "Your patient record does not have a patient ID."
-                );
-            }
+                patient.patient_id ??
+                patient.patientCode ??
+                patient.patientId;
 
             const fullName =
                 patient.name ||
-                `${patient.firstName || patient.first_name || ""} ${
-                    patient.lastName || patient.last_name || ""
+                `${patient.first_name || patient.firstName || ""} ${
+                    patient.last_name || patient.lastName || ""
                 }`.trim();
+
+            if (!actualPatientId) {
+                throw new Error(
+                    "Patient ID is missing from your patient record."
+                );
+            }
 
             if (!fullName) {
                 throw new Error(
-                    "Patient name was not found in your record."
+                    "Patient name is missing from your patient record."
                 );
             }
 
             setPatientId(String(actualPatientId));
             setPatientName(fullName);
 
-            console.log("Logged-in patient:", patient);
-            console.log("Patient ID:", actualPatientId);
+            console.log("Patient loaded:", patient);
 
         } catch (error) {
-            console.error("Load patient failed:", error);
+            console.error("Patient loading error:", error);
+
+            setPatientId("");
+            setPatientName("");
 
             showMessage(
                 error.message || "Unable to load patient information.",
@@ -178,21 +161,19 @@ export default function PatientAppointment() {
         } finally {
             setLoadingPatient(false);
         }
-    }
+    }, []);
 
-    // LOAD DENTAL SERVICES
-    async function loadServices() {
+    // LOAD SERVICES
+    const loadServices = useCallback(async () => {
         setLoadingServices(true);
 
         try {
-            const response = await fetch(
-            `${BASE_URL}/api/services`
-            );
+            const response = await fetch(SERVICES_API);
             const data = await readResponse(response);
 
             if (!response.ok) {
                 throw new Error(
-                    data.message || "Failed to load services."
+                    data.message || "Unable to load dental services."
                 );
             }
 
@@ -214,276 +195,318 @@ export default function PatientAppointment() {
 
             setServices(loadedServices);
 
-            console.log(
-                "Dental services loaded:",
-                loadedServices
-            );
+            console.log("Services loaded:", loadedServices);
 
             // PRESELECT SERVICE FROM URL
             const params = new URLSearchParams(
                 window.location.search
             );
 
-            const requestedService =
+            const requestedId = params.get("serviceId");
+
+            const requestedName =
                 params.get("service") ||
                 params.get("serviceName") ||
                 params.get("selectedService");
 
-            const requestedServiceId =
-                params.get("serviceId");
-
-            if (requestedService || requestedServiceId) {
-                const matchedService = loadedServices.find(item => {
+            if (requestedId || requestedName) {
+                const matched = loadedServices.find(item => {
                     const idMatches =
-                        requestedServiceId &&
-                        String(getServiceId(item)) ===
-                        String(requestedServiceId);
+                        requestedId &&
+                        String(getServiceId(item)) === String(requestedId);
 
                     const nameMatches =
-                        requestedService &&
-                        sameServiceName(
-                            getServiceName(item),
-                            requestedService
-                        );
+                        requestedName &&
+                        getServiceName(item).toLowerCase().trim() ===
+                        requestedName.toLowerCase().trim();
 
                     return Boolean(idMatches || nameMatches);
                 });
 
-                if (matchedService) {
-                    setServiceId(getServiceValue(matchedService));
+                if (matched) {
+                    setServiceId(getServiceValue(matched));
                 } else {
                     showMessage(
-                        `The selected service "${requestedService || requestedServiceId}" was not found. Please choose from the available services.`,
+                        "The requested dental service was not found. Please select a service.",
                         "error"
                     );
                 }
             }
 
         } catch (error) {
-            console.error("Load services failed:", error);
+            console.error("Services loading error:", error);
+
+            setServices([]);
 
             showMessage(
-                "Unable to load dental services. Check your backend server.",
+                error.message || "Unable to load dental services.",
                 "error"
             );
 
         } finally {
             setLoadingServices(false);
         }
-    }
+    }, []);
 
-   // LOAD PATIENT APPOINTMENTS FROM RENDER
-async function loadAppointments() {
-    if (!patientId) return;
-
-    try {
-        const response = await fetch(API_URL);
-
-        const data = await readResponse(response);
-
-        if (!response.ok) {
-            throw new Error(
-                data.message || "Failed to load appointments."
-            );
+    // LOAD APPOINTMENTS
+    const loadAppointments = useCallback(async (currentPatientId) => {
+        if (!currentPatientId) {
+            setAppointments([]);
+            return;
         }
 
-        const loadedAppointments = Array.isArray(data)
-            ? data
-            : Array.isArray(data.appointments)
-                ? data.appointments
-                : Array.isArray(data.data)
-                    ? data.data
-                    : [];
+        setLoadingAppointments(true);
 
-        setAppointments(loadedAppointments);
+        try {
+            const response = await fetch(API_URL);
+            const data = await readResponse(response);
 
-        console.log(
-            "Appointments loaded from Render:",
-            loadedAppointments
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Unable to load appointments."
+                );
+            }
+
+            const loadedAppointments = Array.isArray(data)
+                ? data
+                : data.appointments ||
+                  data.data ||
+                  data.results ||
+                  [];
+
+            if (!Array.isArray(loadedAppointments)) {
+                throw new Error(
+                    "Invalid appointment data received from server."
+                );
+            }
+
+            const filteredAppointments = loadedAppointments.filter(item => {
+                const id =
+                    item.patientId ??
+                    item.patient_id ??
+                    item.patientCode;
+
+                return String(id ?? "") === String(currentPatientId);
+            });
+
+            setAppointments(filteredAppointments);
+
+            console.log(
+                "Patient appointments:",
+                filteredAppointments
+            );
+
+        } catch (error) {
+            console.error("Appointments loading error:", error);
+
+            showMessage(
+                error.message || "Unable to load appointments.",
+                "error"
+            );
+
+        } finally {
+            setLoadingAppointments(false);
+        }
+    }, []);
+
+    // INITIAL LOADING
+    useEffect(() => {
+        loadPatient();
+        loadServices();
+    }, [loadPatient, loadServices]);
+
+    // LOAD PATIENT APPOINTMENTS AFTER PATIENT IS FOUND
+    useEffect(() => {
+        if (patientId) {
+            loadAppointments(patientId);
+        } else {
+            setAppointments([]);
+        }
+    }, [patientId, loadAppointments]);
+
+    // SELECT DENTAL SERVICE
+    function handleServiceChange(event) {
+        const newId = event.target.value;
+
+        setServiceId(newId);
+
+        if (!newId) {
+            setMessage("");
+            return;
+        }
+
+        const chosen = services.find(
+            item => getServiceValue(item) === String(newId)
         );
 
-    } catch (error) {
-        console.error(
-            "Load appointments failed:",
-            error
-        );
+        if (!chosen) {
+            showMessage(
+                "Selected dental service could not be found.",
+                "error"
+            );
+            return;
+        }
 
-        showMessage(
-            error.message ||
-            "Unable to load appointments from Render.",
-            "error"
-        );
+        console.log("Selected service:", {
+            id: getServiceId(chosen),
+            name: getServiceName(chosen),
+            price: getServicePrice(chosen)
+        });
+
+        setMessage("");
     }
-}
 
-// SELECT DENTAL SERVICE
-function handleServiceChange(event) {
-    const newId = event.target.value;
+    // SUBMIT APPOINTMENT
+    async function formSubmit(event) {
+        event.preventDefault();
 
-    setServiceId(newId);
+        if (submitting) return;
 
-    const chosen = services.find(
-        item => String(getServiceValue(item)) === String(newId)
-    );
+        setMessage("");
 
-    if (!chosen) {
-        console.warn("Selected service was not found:", newId);
-        setMessage("Unable to find the selected dental service.");
-        return;
-    }
+        if (!patientId || !patientName) {
+            showMessage(
+                "Patient information is not loaded. Please log in again.",
+                "error"
+            );
+            return;
+        }
 
-    console.log("Selected dental service:", {
-        id: getServiceId(chosen),
-        name: getServiceName(chosen),
-        price: getServicePrice(chosen)
-    });
+        if (!selectedService) {
+            showMessage(
+                "Please select a dental service.",
+                "error"
+            );
+            return;
+        }
 
-    setMessage("");
-}
+        const serviceName = getServiceName(selectedService);
+        const selectedServiceId = getServiceId(selectedService);
 
+        if (!serviceName) {
+            showMessage(
+                "The selected dental service has no valid name.",
+                "error"
+            );
+            return;
+        }
 
-// SUBMIT APPOINTMENT
-async function formSubmit(event) {
-    event.preventDefault();
-    setMessage("");
+        if (!dentist || !date || !time) {
+            showMessage(
+                "Please complete all required appointment details.",
+                "error"
+            );
+            return;
+        }
 
-    // Prevent duplicate submissions
-    if (submitting) return;
+        const today = new Date();
+        const localToday = [
+            today.getFullYear(),
+            String(today.getMonth() + 1).padStart(2, "0"),
+            String(today.getDate()).padStart(2, "0")
+        ].join("-");
 
-    // 1. Validate patient information
-    if (!patientId || !patientName) {
-        showMessage(
-            "Patient information is not loaded. Please log in again.",
-            "error"
-        );
-        return;
-    }
+        if (date < localToday) {
+            showMessage(
+                "Please select today or a future appointment date.",
+                "error"
+            );
+            return;
+        }
 
-    // 2. Validate selected dental service
-    if (!serviceId || !selectedService) {
-        showMessage(
-            "Please select a dental service.",
-            "error"
-        );
-        return;
-    }
-
-    const serviceName = getServiceName(selectedService);
-    const selectedServiceId = getServiceId(selectedService);
-    const servicePrice = getServicePrice(selectedService);
-
-    if (!serviceName) {
-        showMessage(
-            "The selected dental service has no valid name.",
-            "error"
-        );
-        return;
-    }
-
-    // 3. Validate appointment details
-    if (!dentist || !date || !time) {
-        showMessage(
-            "Please select a dentist, appointment date, and time.",
-            "error"
-        );
-        return;
-    }
-
-    setSubmitting(true);
-
-    try {
-        // 4. Prepare appointment data
         const appointmentData = {
             patientId: patientId,
             patientName: patientName,
             service: serviceName,
-            serviceId: selectedServiceId,
-            price: servicePrice,
+            serviceId: selectedServiceId ?? null,
+            price: Number(getServicePrice(selectedService)) || 0,
             dentist: dentist,
             date: date,
             time: time,
-            notes: notes || ""
+            notes: notes.trim()
         };
 
-        console.log("Submitting appointment:", appointmentData);
+        setSubmitting(true);
 
-        // 5. Send appointment to backend
-        const response = await fetch(API_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(appointmentData)
-        });
-
-        const data = await readResponse(response);
-
-        if (!response.ok) {
-            throw new Error(
-                data?.message ||
-                data?.error ||
-                `Appointment submission failed. Server returned ${response.status}.`
+        try {
+            console.log(
+                "Submitting appointment:",
+                appointmentData
             );
+
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(appointmentData)
+            });
+
+            const data = await readResponse(response);
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message ||
+                    data.error ||
+                    `Appointment submission failed (${response.status}).`
+                );
+            }
+
+            showMessage(
+                data.message ||
+                "Appointment request submitted successfully!",
+                "success"
+            );
+
+            setServiceId("");
+            setDentist("");
+            setDate("");
+            setTime("");
+            setNotes("");
+
+            await loadAppointments(patientId);
+
+        } catch (error) {
+            console.error("Appointment submission error:", error);
+
+            showMessage(
+                error.message ||
+                "Unable to submit appointment. Please check your server.",
+                "error"
+            );
+
+        } finally {
+            setSubmitting(false);
         }
-
-        // 6. Show success message
-        showMessage(
-            data?.message ||
-            "Appointment request submitted successfully!",
-            "success"
-        );
-
-        // 7. Reset appointment form
-        setServiceId("");
-        setDentist("");
-        setDate("");
-        setTime("");
-        setNotes("");
-
-        // 8. Refresh appointment list
-        await loadAppointments();
-
-    } catch (error) {
-        console.error("Create appointment failed:", error);
-
-        showMessage(
-            error.message ||
-            "Unable to submit appointment. Please check your server.",
-            "error"
-        );
-
-    } finally {
-        setSubmitting(false);
     }
-}
 
     // CANCEL APPOINTMENT
     async function cancelAppointment(appointment) {
         const id = appointment.id ?? appointment._id;
-        const status = appointment.status || "Pending";
+
+        const status = String(
+            appointment.status || "Pending"
+        ).toLowerCase();
 
         if (!id) {
-            return showMessage(
-                "Unable to cancel: appointment ID not found.",
+            showMessage(
+                "Appointment ID not found.",
                 "error"
             );
+            return;
         }
 
-        if (
-            status === "Cancelled" ||
-            status === "Completed"
-        ) {
-            return showMessage(
+        if (status === "cancelled" || status === "completed") {
+            showMessage(
                 "This appointment can no longer be cancelled.",
                 "error"
             );
+            return;
         }
 
-        if (
-            !window.confirm(
-                "Are you sure you want to cancel this appointment?"
-            )
-        ) {
+        if (!window.confirm(
+            "Are you sure you want to cancel this appointment?"
+        )) {
             return;
         }
 
@@ -512,32 +535,15 @@ async function formSubmit(event) {
                 );
             }
 
-            const updated = data.appointment || {
-                ...appointment,
-                status: "Cancelled"
-            };
-
-            setAppointments(current =>
-                current.map(item =>
-                    String(item.id ?? item._id) === String(id)
-                        ? {
-                            ...item,
-                            ...updated,
-                            status: "Cancelled"
-                        }
-                        : item
-                )
-            );
+            await loadAppointments(patientId);
 
             showMessage(
-                "Appointment cancelled successfully!"
+                data.message || "Appointment cancelled successfully!",
+                "success"
             );
 
         } catch (error) {
-            console.error(
-                "Cancel appointment failed:",
-                error
-            );
+            console.error("Cancellation error:", error);
 
             showMessage(
                 error.message || "Unable to cancel appointment.",
@@ -549,20 +555,14 @@ async function formSubmit(event) {
         }
     }
 
-    // ONLY SHOW THE LOGGED-IN PATIENT'S APPOINTMENTS
-    const myAppointments = appointments.filter(item =>
-        String(item.patientId ?? item.patient_id ?? "") ===
-        String(patientId)
-    );
-
+    // MINIMUM APPOINTMENT DATE
     const today = new Date();
 
-    const minDate =
-        `${today.getFullYear()}-${String(
-            today.getMonth() + 1
-        ).padStart(2, "0")}-${String(
-            today.getDate()
-        ).padStart(2, "0")}`;
+    const minDate = [
+        today.getFullYear(),
+        String(today.getMonth() + 1).padStart(2, "0"),
+        String(today.getDate()).padStart(2, "0")
+    ].join("-");
 
     return (
         <>
@@ -864,10 +864,7 @@ async function formSubmit(event) {
                 }
             `}</style>
 
-            <Sidebar
-                role="patient"
-                active="appointments"
-            />
+            <Sidebar role="patient" active="appointments" />
 
             <div className="appointment-main">
 
@@ -909,7 +906,7 @@ async function formSubmit(event) {
                     {message && (
                         <div
                             className={`appointment-message ${messageType}`}
-                            role="status"
+                            role="alert"
                         >
                             {message}
                         </div>
@@ -961,42 +958,34 @@ async function formSubmit(event) {
 
                                     {services.map((item, index) => (
                                         <option
-                                            key={
-                                                getServiceId(item) ?? index
-                                            }
+                                            key={getServiceId(item) ?? index}
                                             value={getServiceValue(item)}
                                         >
                                             {getServiceName(item)}
                                             {" — ₱"}
-                                            {Number(
+                                            {formatPrice(
                                                 getServicePrice(item)
-                                            ).toLocaleString("en-PH")}
+                                            )}
                                         </option>
                                     ))}
                                 </select>
 
                                 {selectedService && (
                                     <div className="appointment-info-box">
-                                        <strong>
-                                            Selected Service:
-                                        </strong>{" "}
+                                        <strong>Selected Service:</strong>{" "}
                                         {getServiceName(selectedService)}
-
                                         <br />
 
                                         <strong>Price:</strong>{" "}
-                                        ₱
-                                        {Number(
+                                        ₱{formatPrice(
                                             getServicePrice(selectedService)
-                                        ).toLocaleString("en-PH")}
+                                        )}
 
                                         {(selectedService.description ||
                                             selectedService.details) && (
                                             <>
                                                 <br />
-                                                <strong>
-                                                    Description:
-                                                </strong>{" "}
+                                                <strong>Description:</strong>{" "}
                                                 {selectedService.description ||
                                                     selectedService.details}
                                             </>
@@ -1072,33 +1061,13 @@ async function formSubmit(event) {
                                             Select time
                                         </option>
 
-                                        <option value="9:00 AM">
-                                            9:00 AM
-                                        </option>
-
-                                        <option value="10:00 AM">
-                                            10:00 AM
-                                        </option>
-
-                                        <option value="11:00 AM">
-                                            11:00 AM
-                                        </option>
-
-                                        <option value="1:00 PM">
-                                            1:00 PM
-                                        </option>
-
-                                        <option value="2:00 PM">
-                                            2:00 PM
-                                        </option>
-
-                                        <option value="3:00 PM">
-                                            3:00 PM
-                                        </option>
-
-                                        <option value="4:00 PM">
-                                            4:00 PM
-                                        </option>
+                                        <option value="9:00 AM">9:00 AM</option>
+                                        <option value="10:00 AM">10:00 AM</option>
+                                        <option value="11:00 AM">11:00 AM</option>
+                                        <option value="1:00 PM">1:00 PM</option>
+                                        <option value="2:00 PM">2:00 PM</option>
+                                        <option value="3:00 PM">3:00 PM</option>
+                                        <option value="4:00 PM">4:00 PM</option>
                                     </select>
                                 </div>
 
@@ -1149,7 +1118,7 @@ async function formSubmit(event) {
 
                     </section>
 
-                    {/* MY APPOINTMENTS TABLE */}
+                    {/* MY APPOINTMENTS */}
 
                     <section className="appointment-table-card">
 
@@ -1173,19 +1142,22 @@ async function formSubmit(event) {
 
                             <tbody>
 
-                                {myAppointments.length === 0 ? (
+                                {loadingAppointments ? (
                                     <tr>
-                                        <td
-                                            colSpan="9"
-                                            className="appointment-empty"
-                                        >
+                                        <td colSpan="9" className="appointment-empty">
+                                            Loading appointments...
+                                        </td>
+                                    </tr>
+                                ) : myAppointmentsPlaceholder(appointments).length === 0 ? (
+                                    <tr>
+                                        <td colSpan="9" className="appointment-empty">
                                             {loadingPatient
                                                 ? "Loading patient information..."
                                                 : "No appointments found."}
                                         </td>
                                     </tr>
                                 ) : (
-                                    myAppointments.map(
+                                    myAppointmentsPlaceholder(appointments).map(
                                         (appointment, index) => {
                                             const id =
                                                 appointment.id ??
@@ -1195,9 +1167,11 @@ async function formSubmit(event) {
                                                 appointment.status ||
                                                 "Pending";
 
+                                            const normalizedStatus =
+                                                status.toLowerCase();
+
                                             return (
                                                 <tr key={id ?? index}>
-
                                                     <td>
                                                         {appointment.patientId ||
                                                             appointment.patient_id ||
@@ -1205,26 +1179,19 @@ async function formSubmit(event) {
                                                     </td>
 
                                                     <td>
-                                                        {appointment.service ||
-                                                            "—"}
+                                                        {appointment.service || "—"}
                                                     </td>
 
                                                     <td>
-                                                        {appointment.price ===
-                                                        null ||
-                                                        appointment.price ===
-                                                        undefined
+                                                        {appointment.price == null
                                                             ? "—"
-                                                            : `₱${Number(
+                                                            : `₱${formatPrice(
                                                                 appointment.price
-                                                            ).toLocaleString(
-                                                                "en-PH"
                                                             )}`}
                                                     </td>
 
                                                     <td>
-                                                        {appointment.dentist ||
-                                                            "—"}
+                                                        {appointment.dentist || "—"}
                                                     </td>
 
                                                     <td>
@@ -1240,20 +1207,17 @@ async function formSubmit(event) {
                                                     </td>
 
                                                     <td>
-                                                        {appointment.notes ||
-                                                            "—"}
+                                                        {appointment.notes || "—"}
                                                     </td>
 
                                                     <td>
                                                         <span
                                                             className={`appointment-status ${
-                                                                status ===
-                                                                "Cancelled"
+                                                                normalizedStatus === "cancelled"
                                                                     ? "status-cancelled"
-                                                                    : status ===
-                                                                      "Completed"
-                                                                    ? "status-completed"
-                                                                    : ""
+                                                                    : normalizedStatus === "completed"
+                                                                        ? "status-completed"
+                                                                        : ""
                                                             }`}
                                                         >
                                                             {status}
@@ -1261,33 +1225,24 @@ async function formSubmit(event) {
                                                     </td>
 
                                                     <td>
-                                                        {status !==
-                                                            "Cancelled" &&
-                                                        status !==
-                                                            "Completed" ? (
+                                                        {normalizedStatus !== "cancelled" &&
+                                                        normalizedStatus !== "completed" ? (
                                                             <button
                                                                 type="button"
                                                                 className="appointment-cancel-btn"
                                                                 disabled={
-                                                                    cancellingId ===
-                                                                    String(id)
+                                                                    cancellingId === String(id)
                                                                 }
                                                                 onClick={() =>
-                                                                    cancelAppointment(
-                                                                        appointment
-                                                                    )
+                                                                    cancelAppointment(appointment)
                                                                 }
                                                             >
-                                                                {cancellingId ===
-                                                                String(id)
+                                                                {cancellingId === String(id)
                                                                     ? "Cancelling..."
                                                                     : "Cancel"}
                                                             </button>
-                                                        ) : (
-                                                            "—"
-                                                        )}
+                                                        ) : "—"}
                                                     </td>
-
                                                 </tr>
                                             );
                                         }
@@ -1301,8 +1256,23 @@ async function formSubmit(event) {
                     </section>
 
                 </main>
-
             </div>
         </>
+    );
+}
+
+// FILTER APPOINTMENTS FOR CURRENT PATIENT
+function myAppointmentsPlaceholder(appointments) {
+    const currentPatientId = localStorage.getItem("patientId");
+
+    // The component's patient ID is loaded from the API.
+    // This fallback is replaced by the filtering inside the component.
+    if (!currentPatientId) {
+        return appointments;
+    }
+
+    return appointments.filter(item =>
+        String(item.patientId ?? item.patient_id ?? "") ===
+        String(currentPatientId)
     );
 }
