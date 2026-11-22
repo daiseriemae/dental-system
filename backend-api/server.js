@@ -797,7 +797,7 @@ function formatPatient(patient, columns) {
     };
 }
 
-// REGISTER PATIENT IN MYSQL
+// REGISTER PATIENT IN TiDB
 app.post("/api/patients", async (req, res) => {
     try {
         const firstName = String(req.body.firstName || "").trim();
@@ -807,29 +807,29 @@ app.post("/api/patients", async (req, res) => {
 
         if (!firstName || !lastName || !email) {
             return res.status(400).json({
+                success: false,
                 message: "First name, last name, and email are required."
             });
         }
 
-        // Prevent duplicate patient accounts
-        const [existing] = await db.query(
-            "SELECT * FROM patients WHERE email = ? LIMIT 1",
+        const [existing] = await db.execute(
+            "SELECT * FROM patients WHERE LOWER(email) = ? LIMIT 1",
             [email]
         );
 
         if (existing.length > 0) {
             const columns = await getPatientColumns();
 
-            return res.status(409).json({
-                message: "A patient with this email already exists.",
+            return res.status(200).json({
+                success: true,
+                message: "Patient already registered.",
                 patient: formatPatient(existing[0], columns)
             });
         }
 
-        // Generate a unique patient code
         const patientCode = `P-${Date.now()}`;
 
-        const [result] = await db.query(
+        const [result] = await db.execute(
             `INSERT INTO patients
                 (patient_id, first_name, last_name, email, phone, status)
              VALUES (?, ?, ?, ?, ?, ?)`,
@@ -843,7 +843,7 @@ app.post("/api/patients", async (req, res) => {
             ]
         );
 
-        const [rows] = await db.query(
+        const [rows] = await db.execute(
             "SELECT * FROM patients WHERE id = ?",
             [result.insertId]
         );
@@ -851,17 +851,17 @@ app.post("/api/patients", async (req, res) => {
         const columns = await getPatientColumns();
         const patient = formatPatient(rows[0], columns);
 
-        logBlock("PATIENT REGISTERED IN MYSQL", patient);
-
         return res.status(201).json({
+            success: true,
             message: "Patient registered successfully.",
             patient
         });
 
     } catch (error) {
-        console.error("Register patient error:", error.message);
+        console.error("REGISTER PATIENT ERROR:", error);
 
         return res.status(500).json({
+            success: false,
             message: "Failed to register patient.",
             error: error.message
         });
