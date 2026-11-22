@@ -316,49 +316,31 @@ async function loadAppointments() {
     }
 }
 
-    // SELECT DENTAL SERVICE
-    async function handleServiceChange(event) {
-        const newId = event.target.value;
 
-        setServiceId(newId);
+// SELECT DENTAL SERVICE
+function handleServiceChange(event) {
+    const newId = event.target.value;
 
-        const chosen = services.find(
-            item => getServiceValue(item) === newId
-        );
+    setServiceId(newId);
 
-        if (!chosen) return;
+    const chosen = services.find(
+        item => getServiceValue(item) === newId
+    );
 
-        console.log(
-            "Selected dental service:",
-            getServiceName(chosen),
-            "Price:",
-            getServicePrice(chosen)
-        );
-
-        if (getServiceId(chosen) != null) {
-            try {
-                await fetch(
-                    `${BASE_URL}/api/logs/service-selection`,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            serviceId: getServiceId(chosen),
-                            serviceName: getServiceName(chosen),
-                            price: getServicePrice(chosen)
-                        })
-                    }
-                );
-            } catch (error) {
-                console.warn(
-                    "Service selection logging failed:",
-                    error
-                );
-            }
-        }
+    if (!chosen) {
+        console.warn("Selected service was not found:", newId);
+        return;
     }
+
+    console.log("Selected dental service:", {
+        id: getServiceId(chosen),
+        name: getServiceName(chosen),
+        price: getServicePrice(chosen)
+    });
+
+    setMessage("");
+}
+
 
     // SUBMIT APPOINTMENT
     async function formSubmit(event) {
