@@ -871,29 +871,36 @@ app.post("/api/patients", async (req, res) => {
 // GET PATIENT BY EMAIL
 app.get("/api/patients/by-email/:email", async (req, res) => {
     try {
-        const email = decodeURIComponent(req.params.email);
+        const email = decodeURIComponent(req.params.email)
+            .trim()
+            .toLowerCase();
 
-        const [rows] = await db.query(
-            "SELECT * FROM patients WHERE email = ? LIMIT 1",
+        const [rows] = await db.execute(
+            `SELECT *
+             FROM patients
+             WHERE LOWER(email) = ?
+             LIMIT 1`,
             [email]
         );
 
         if (rows.length === 0) {
             return res.status(404).json({
-                message: "Patient record not found. Please register first."
+                success: false,
+                message: "Patient record not found."
             });
         }
 
-        const columns = await getPatientColumns();
-        const patient = formatPatient(rows[0], columns);
-
-        res.json({ patient });
+        res.json({
+            success: true,
+            patient: rows[0]
+        });
 
     } catch (error) {
-        console.error("Find patient by email error:", error);
+        console.error("PATIENT LOOKUP ERROR:", error);
 
         res.status(500).json({
-            message: "Failed to find patient."
+            success: false,
+            message: "Failed to retrieve patient."
         });
     }
 });
