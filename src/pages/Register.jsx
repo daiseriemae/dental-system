@@ -1,186 +1,695 @@
-import { useEffect } from "react";
 
-const pageScript = "\n\n\n/* =====================================\n   SHOW/HIDE PASSWORD\n===================================== */\n\nfunction togglePassword(id, icon) {\n\n    const passwordInput =\n        document.getElementById(id);\n\n\n    if (passwordInput.type === \"password\") {\n\n        passwordInput.type = \"text\";\n\n        icon.classList.remove(\n            \"bi-eye-slash\"\n        );\n\n        icon.classList.add(\n            \"bi-eye\"\n        );\n\n    }\n\n    else {\n\n        passwordInput.type = \"password\";\n\n        icon.classList.remove(\n            \"bi-eye\"\n        );\n\n        icon.classList.add(\n            \"bi-eye-slash\"\n        );\n\n    }\n\n}\n\n\n/* =====================================\n   SHOW LICENSE FIELD FOR DENTIST\n===================================== */\n\nfunction checkAccountType() {\n\n    const role =\n        document.getElementById(\"role\").value;\n\n    const licenseBox =\n        document.getElementById(\"licenseBox\");\n\n    const licenseId =\n        document.getElementById(\"licenseId\");\n\n\n    if (role === \"dentist\") {\n\n        /* Show License ID */\n\n        licenseBox.style.display = \"block\";\n\n        /* Make License ID required */\n\n        licenseId.required = true;\n\n    }\n\n    else {\n\n        /* Hide License ID */\n\n        licenseBox.style.display = \"none\";\n\n        /* Remove required */\n\n        licenseId.required = false;\n\n        /* Clear old value */\n\n        licenseId.value = \"\";\n\n    }\n\n}\n\n\n/* =====================================\n   REGISTER FORM\n===================================== */\n\ndocument\n    .getElementById(\"registerForm\")\n    .addEventListener(\n        \"submit\",\n        function(event) {\n\n            event.preventDefault();\n\n\n            /* Get values */\n\n            const firstName =\n                document\n                    .getElementById(\"firstName\")\n                    .value\n                    .trim();\n\n\n            const lastName =\n                document\n                    .getElementById(\"lastName\")\n                    .value\n                    .trim();\n\n\n            const email =\n                document\n                    .getElementById(\"email\")\n                    .value\n                    .trim();\n\n\n            const role =\n                document\n                    .getElementById(\"role\")\n                    .value;\n\n\n            const licenseId =\n                document\n                    .getElementById(\"licenseId\")\n                    .value\n                    .trim();\n\n\n            const password =\n                document\n                    .getElementById(\"password\")\n                    .value;\n\n\n            const confirmPassword =\n                document\n                    .getElementById(\"confirmPassword\")\n                    .value;\n\n\n            const terms =\n                document\n                    .getElementById(\"terms\")\n                    .checked;\n\n\n            /* =================================\n               VALIDATION\n            ================================= */\n\n            if (firstName === \"\") {\n\n                showMessage(\n                    \"Please enter your first name.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            if (lastName === \"\") {\n\n                showMessage(\n                    \"Please enter your last name.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            if (email === \"\") {\n\n                showMessage(\n                    \"Please enter your email.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            if (role === \"\") {\n\n                showMessage(\n                    \"Please select your account type.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            /* =================================\n               DENTIST LICENSE VALIDATION\n            ================================= */\n\n            if (\n                role === \"dentist\" &&\n                licenseId === \"\"\n            ) {\n\n                showMessage(\n                    \"Please enter your Professional License ID.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            if (password.length < 6) {\n\n                showMessage(\n                    \"Password must be at least 6 characters.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            if (password !== confirmPassword) {\n\n                showMessage(\n                    \"Passwords do not match.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            if (!terms) {\n\n                showMessage(\n                    \"Please agree to the terms and conditions.\",\n                    \"danger\"\n                );\n\n                return;\n\n            }\n\n\n            /* =================================\n               SAVE TEMPORARILY\n            ================================= */\n\n            localStorage.setItem(\n                \"userFirstName\",\n                firstName\n            );\n\n\n            localStorage.setItem(\n                \"userLastName\",\n                lastName\n            );\n\n\n            localStorage.setItem(\n                \"userEmail\",\n                email\n            );\n\n\n            localStorage.setItem(\n                \"userRole\",\n                role\n            );\n\n\n            /* Save license only for dentist */\n\n            if (role === \"dentist\") {\n\n                localStorage.setItem(\n                    \"dentistLicenseId\",\n                    licenseId\n                );\n\n            }\n\n\n            /* =================================\n               SUCCESS\n            ================================= */\n\n            showMessage(\n                \"Account created successfully! Redirecting to login...\",\n                \"success\"\n            );\n\n\n            setTimeout(\n                function() {\n\n                    if (role === \"dentist\") {\n\n                        window.location.href =\n                            \"dentist-login.html\";\n\n                    }\n\n                    else {\n\n                        window.location.href =\n                            \"loginpage.html\";\n\n                    }\n\n                },\n                1500\n            );\n\n        }\n    );\n\n\n/* =====================================\n   SHOW MESSAGE\n===================================== */\n\nfunction showMessage(text, type) {\n\n    const message =\n        document.getElementById(\n            \"registerMessage\"\n        );\n\n\n    message.className =\n        \"alert alert-\" +\n        type +\n        \" text-center\";\n\n\n    message.innerText = text;\n\n\n    message.style.display = \"block\";\n\n}\n\n";
+import React, { useState } from "react";
 
-function runInline(code, event) {
-  try {
-    return Function("event", code).call(event.currentTarget, event);
-  } catch (error) {
-    console.error(error);
-  }
-}
+import {
+    createUserWithEmailAndPassword
+} from "firebase/auth";
+
+import {
+    doc,
+    setDoc,
+    serverTimestamp
+} from "firebase/firestore";
+
+import {
+    auth,
+    db
+} from "../Firebase";
+
+const API_URL = (
+    import.meta.env.VITE_API_URL || "http://localhost:8080"
+).replace(/\/+$/, "");
 
 export default function Register() {
-  useEffect(() => {
-    if (!pageScript.trim()) return;
+    const [form, setForm] = useState({
+        firstName: "",
+        lastName: "",
+        email: "",
+        role: "",
+        licenseId: "",
+        password: "",
+        confirmPassword: "",
+        terms: false
+    });
 
-    const script = document.createElement("script");
-    script.textContent = pageScript;
-    document.body.appendChild(script);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [message, setMessage] = useState("");
+    const [messageType, setMessageType] = useState("danger");
+    const [loading, setLoading] = useState(false);
 
-    return () => {
-      script.remove();
-    };
-  }, []);
+    function handleChange(event) {
+        const { name, value, checked, type } = event.target;
 
-  return (
-    <>
-      <style>{"\n\n        /* =====================================\n           PAGE BACKGROUND\n        ===================================== */\n\n        body {\n\n            min-height: 100vh;\n\n            margin: 0;\n\n            display: flex;\n\n            align-items: center;\n\n            justify-content: center;\n\n            background:\n                linear-gradient(\n                    135deg,\n                    #eee8ff,\n                    #f8f5ff,\n                    #e9ddf7\n                );\n\n            font-family: Arial, sans-serif;\n\n        }\n\n\n        /* =====================================\n           REGISTER CARD\n        ===================================== */\n\n        .register-card {\n\n            width: 100%;\n\n            max-width: 480px;\n\n            background:\n                linear-gradient(\n                    145deg,\n                    #ffffff 0%,\n                    #faf8ff 55%,\n                    #f1eaff 100%\n                );\n\n            border: none;\n\n            border-radius: 25px;\n\n            position: relative;\n\n            overflow: hidden;\n\n            box-shadow:\n                0 15px 40px\n                rgba(123, 97, 168, 0.20);\n\n        }\n\n\n        /* =====================================\n           DECORATIVE CIRCLES\n        ===================================== */\n\n        .register-card::before {\n\n            content: \"\";\n\n            position: absolute;\n\n            width: 180px;\n\n            height: 180px;\n\n            background:\n                rgba(155, 123, 184, 0.12);\n\n            border-radius: 50%;\n\n            top: -90px;\n\n            right: -60px;\n\n        }\n\n\n        .register-card::after {\n\n            content: \"\";\n\n            position: absolute;\n\n            width: 140px;\n\n            height: 140px;\n\n            background:\n                rgba(169, 139, 196, 0.10);\n\n            border-radius: 50%;\n\n            bottom: -70px;\n\n            left: -50px;\n\n        }\n\n\n        .register-card > * {\n\n            position: relative;\n\n            z-index: 2;\n\n        }\n\n\n        /* =====================================\n           LOGO\n        ===================================== */\n\n        .logo-container {\n\n            width: 80px;\n\n            height: 80px;\n\n            margin: 0 auto 15px;\n\n            border-radius: 50%;\n\n            background-color: #eee7ff;\n\n            display: flex;\n\n            align-items: center;\n\n            justify-content: center;\n\n            overflow: hidden;\n\n            box-shadow:\n                0 5px 15px\n                rgba(123, 97, 168, 0.12);\n\n        }\n\n\n        .logo-container img {\n\n            width: 80px;\n\n            height: 80px;\n\n            object-fit: cover;\n\n        }\n\n\n        /* =====================================\n           TITLE\n        ===================================== */\n\n        .register-title {\n\n            color: #7b61a8;\n\n            font-weight: bold;\n\n        }\n\n\n        .register-subtitle {\n\n            color: #8c8499;\n\n        }\n\n\n        /* =====================================\n           LABEL\n        ===================================== */\n\n        .form-label {\n\n            color: #655a70;\n\n            font-weight: 600;\n\n        }\n\n\n        /* =====================================\n           INPUT\n        ===================================== */\n\n        .form-control {\n\n            height: 45px;\n\n            border-radius: 10px;\n\n            border: 1px solid #d8ccec;\n\n            background-color:\n                rgba(255, 255, 255, 0.90);\n\n        }\n\n\n        .form-control:focus {\n\n            border-color: #a98bc4;\n\n            box-shadow:\n                0 0 0 0.2rem\n                rgba(169, 139, 196, 0.20);\n\n        }\n\n\n        /* =====================================\n           SELECT\n        ===================================== */\n\n        .form-select {\n\n            height: 45px;\n\n            border-radius: 10px;\n\n            border: 1px solid #d8ccec;\n\n            background-color:\n                rgba(255, 255, 255, 0.90);\n\n        }\n\n\n        .form-select:focus {\n\n            border-color: #a98bc4;\n\n            box-shadow:\n                0 0 0 0.2rem\n                rgba(169, 139, 196, 0.20);\n\n        }\n\n\n        /* =====================================\n           PASSWORD\n        ===================================== */\n\n        .password-box {\n\n            position: relative;\n\n        }\n\n\n        .password-box .form-control {\n\n            padding-right: 45px;\n\n        }\n\n\n        .password-icon {\n\n            position: absolute;\n\n            right: 15px;\n\n            top: 50%;\n\n            transform: translateY(15%);\n\n            color: #9b7bb8;\n\n            cursor: pointer;\n\n            font-size: 18px;\n\n        }\n\n\n        .password-icon:hover {\n\n            color: #80609e;\n\n        }\n\n\n        /* =====================================\n           REGISTER BUTTON\n        ===================================== */\n\n        .btn-register {\n\n            height: 45px;\n\n            border: none;\n\n            border-radius: 12px;\n\n            background-color: #9b7bb8;\n\n            color: white;\n\n            font-weight: 600;\n\n            transition: 0.3s;\n\n        }\n\n\n        .btn-register:hover {\n\n            background-color: #80609e;\n\n            color: white;\n\n            transform: translateY(-2px);\n\n            box-shadow:\n                0 5px 15px\n                rgba(128, 96, 158, 0.25);\n\n        }\n\n\n        /* =====================================\n           LOGIN LINK\n        ===================================== */\n\n        .signin-link {\n\n            color: #80609e;\n\n            font-weight: 600;\n\n        }\n\n\n        .signin-link:hover {\n\n            color: #6d4f8e;\n\n            text-decoration: underline !important;\n\n        }\n\n\n        /* =====================================\n           TERMS\n        ===================================== */\n\n        .form-check-label {\n\n            color: #716a78;\n\n        }\n\n\n        .form-check-input:checked {\n\n            background-color: #9b7bb8;\n\n            border-color: #9b7bb8;\n\n        }\n\n\n        /* =====================================\n           LICENSE BOX\n        ===================================== */\n\n        #licenseBox {\n\n            display: none;\n\n        }\n\n\n        .license-note {\n\n            font-size: 12px;\n\n            color: #8c8499;\n\n            margin-top: 5px;\n\n        }\n\n\n        /* =====================================\n           MESSAGE\n        ===================================== */\n\n        #registerMessage {\n\n            display: none;\n\n            border-radius: 10px;\n\n        }\n\n\n        /* =====================================\n           RESPONSIVE\n        ===================================== */\n\n        @media (max-width: 576px) {\n\n            body {\n\n                padding: 20px 10px;\n\n            }\n\n\n            .register-card {\n\n                max-width: 100%;\n\n                border-radius: 20px;\n\n                padding: 30px 25px !important;\n\n            }\n\n        }\n\n    "}</style>
-        <div className="container py-4">
-    <div className="row justify-content-center">
-      <div className="col-12 col-sm-6 col-md-11 col-lg-9">
+        setForm(previous => ({
+            ...previous,
+            [name]: type === "checkbox" ? checked : value
+        }));
+    }
 
-        <div className="register-card p-4 p-md-5">
+    function showMessage(text, type = "danger") {
+        setMessage(text);
+        setMessageType(type);
+    }
 
-          <div className="logo-container">
-            <img src="images.jfif" alt="DentalCare Logo" />
-</div>
+    // ==========================================
+    // REGISTER ACCOUNT
+    // FIREBASE AUTHENTICATION + FIRESTORE
+    // ==========================================
 
-          <div className="text-center mb-4">
-            <h2 className="register-title">
+    async function handleSubmit(event) {
+        event.preventDefault();
 
-                        Create Account
+        if (loading) return;
 
-                    </h2>
-            <p className="register-subtitle mb-0">
+        const firstName = form.firstName.trim();
+        const lastName = form.lastName.trim();
+        const email = form.email.trim().toLowerCase();
+        const role = form.role;
+        const licenseId = form.licenseId.trim();
+        const password = form.password;
+        const confirmPassword = form.confirmPassword;
 
-                        Register for your DentalCare account.
+        if (!firstName || !lastName || !email) {
+            showMessage("Please complete all required fields.");
+            return;
+        }
 
-                    </p>
-</div>
+        if (!role) {
+            showMessage("Please select your account type.");
+            return;
+        }
 
-          <div id="registerMessage" className="alert text-center" role="alert">
-</div>
+        if (role === "dentist" && !licenseId) {
+            showMessage("Please enter your Professional License ID.");
+            return;
+        }
 
-          <form id="registerForm">
+        if (password.length < 6) {
+            showMessage("Password must be at least 6 characters.");
+            return;
+        }
 
-            <div className="row g-2 mb-3">
-              <div className="col-6">
-                <label htmlFor="firstName" className="form-label">
+        if (password !== confirmPassword) {
+            showMessage("Passwords do not match.");
+            return;
+        }
 
-                                First Name
+        if (!form.terms) {
+            showMessage("Please agree to the terms and conditions.");
+            return;
+        }
 
-                            </label>
-                <input type="text" id="firstName" className="form-control" placeholder="First name" required="" />
-</div>
-              <div className="col-6">
-                <label htmlFor="lastName" className="form-label">
+        setLoading(true);
+        setMessage("");
 
-                                Last Name
+        try {
+            // ==================================
+            // STEP 1: CREATE FIREBASE ACCOUNT
+            // ==================================
 
-                            </label>
-                <input type="text" id="lastName" className="form-control" placeholder="Last name" required="" />
-</div>
-</div>
+            const userCredential =
+                await createUserWithEmailAndPassword(
+                    auth,
+                    email,
+                    password
+                );
 
-            <div className="mb-3">
-              <label htmlFor="email" className="form-label">
+            const currentUser = userCredential.user;
 
-                            Email
+            console.log(
+                "Firebase account created:",
+                currentUser.uid
+            );
 
-                        </label>
-              <input type="email" id="email" className="form-control" placeholder="Enter your email" required="" />
-</div>
+            // ==================================
+            // STEP 2: SAVE USER DETAILS TO FIRESTORE
+            // ==================================
 
-            <div className="mb-3">
-              <label htmlFor="role" className="form-label">
+            const userData = {
+                uid: currentUser.uid,
+                firstName: firstName,
+                lastName: lastName,
+                displayName: `${firstName} ${lastName}`,
+                email: email,
+                role: role,
+                photoURL: "",
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            };
 
-                            Account Type
+            // Save license ID only for dentists.
+            if (role === "dentist") {
+                userData.licenseId = licenseId;
+            }
 
-                        </label>
-              <select id="role" className="form-select" required="" onChange={(event) => runInline("checkAccountType()", event)}>
-                <option value="">
+            await setDoc(
+                doc(db, "users", currentUser.uid),
+                userData
+            );
 
-                                Select account type
+            console.log(
+                "User information saved to Firestore."
+            );
 
-                            </option>
-                <option value="patient">
+            // ==================================
+            // STEP 3: REGISTER PATIENT IN MYSQL
+            // ==================================
 
-                                Patient
+            let patientId = "";
 
-                            </option>
-                <option value="dentist">
+            if (role === "patient") {
+                const response = await fetch(
+                    `${API_URL}/api/patients`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            firstName,
+                            lastName,
+                            email,
+                            phone: ""
+                        })
+                    }
+                );
 
-                                Dentist
+                const result = await response.json();
 
-                            </option>
-</select>
-</div>
+                if (!response.ok) {
+                    throw new Error(
+                        result.message ||
+                        "Patient information could not be saved to MySQL."
+                    );
+                }
 
-            <div id="licenseBox" className="mb-3">
-              <label htmlFor="licenseId" className="form-label">
-                <i className="bi bi-card-text me-1"></i>
+                patientId =
+                    result.patient?.patientCode ||
+                    result.patient?.id ||
+                    "";
 
-                            Professional License ID
+                if (!patientId) {
+                    throw new Error(
+                        "Patient was registered, but the Patient ID was not returned by the backend."
+                    );
+                }
 
-                        </label>
-              <input type="text" id="licenseId" className="form-control" placeholder="Enter your professional license ID" />
-              <div className="license-note">
+                console.log(
+                    "Patient saved to MySQL:",
+                    patientId
+                );
+            }
 
-                            Required for dentist registration.
+            // ==================================
+            // STEP 4: SHOW SUCCESS MESSAGE
+            // ==================================
 
+            showMessage(
+                role === "dentist"
+                    ? "Dentist account created successfully! Redirecting to login..."
+                    : "Patient account created successfully! Redirecting to login...",
+                "success"
+            );
+
+            // Do not save the user as logged in here.
+            // The user must log in first.
+
+            setTimeout(() => {
+                if (role === "dentist") {
+                    window.location.href = "/dentist-login.html";
+                } else {
+                    window.location.href = "/login";
+                }
+            }, 1500);
+
+        } catch (error) {
+            console.error("Registration error:", error);
+
+            let errorMessage =
+                "Registration failed. Please try again.";
+
+            if (error.code === "auth/email-already-in-use") {
+                errorMessage =
+                    "This email is already registered. Please use another email or log in.";
+
+            } else if (error.code === "auth/invalid-email") {
+                errorMessage =
+                    "Please enter a valid email address.";
+
+            } else if (error.code === "auth/weak-password") {
+                errorMessage =
+                    "Your password is too weak. Please use at least 6 characters.";
+
+            } else if (error.code === "auth/network-request-failed") {
+                errorMessage =
+                    "Network error. Please check your internet connection.";
+
+            } else if (error.code === "permission-denied") {
+                errorMessage =
+                    "Firestore permission denied. Please check your Firebase security rules.";
+
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            showMessage(errorMessage);
+
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    return (
+        <>
+            <style>{`
+                body {
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(
+                        135deg,
+                        #eee8ff,
+                        #f8f5ff,
+                        #e9ddf7
+                    );
+                    font-family: Arial, sans-serif;
+                }
+
+                .register-card {
+                    width: 100%;
+                    max-width: 480px;
+                    background: linear-gradient(
+                        145deg,
+                        #ffffff 0%,
+                        #faf8ff 55%,
+                        #f1eaff 100%
+                    );
+                    border-radius: 25px;
+                    position: relative;
+                    overflow: hidden;
+                    box-shadow: 0 15px 40px
+                        rgba(123, 97, 168, 0.20);
+                }
+
+                .register-card::before {
+                    content: "";
+                    position: absolute;
+                    width: 180px;
+                    height: 180px;
+                    background: rgba(155, 123, 184, 0.12);
+                    border-radius: 50%;
+                    top: -90px;
+                    right: -60px;
+                }
+
+                .register-card::after {
+                    content: "";
+                    position: absolute;
+                    width: 140px;
+                    height: 140px;
+                    background: rgba(169, 139, 196, 0.10);
+                    border-radius: 50%;
+                    bottom: -70px;
+                    left: -50px;
+                }
+
+                .register-card > * {
+                    position: relative;
+                    z-index: 2;
+                }
+
+                .logo-container {
+                    width: 80px;
+                    height: 80px;
+                    margin: 0 auto 15px;
+                    border-radius: 50%;
+                    background-color: #eee7ff;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+                    box-shadow: 0 5px 15px
+                        rgba(123, 97, 168, 0.12);
+                }
+
+                .logo-container img {
+                    width: 80px;
+                    height: 80px;
+                    object-fit: cover;
+                }
+
+                .register-title {
+                    color: #7b61a8;
+                    font-weight: bold;
+                }
+
+                .register-subtitle {
+                    color: #8c8499;
+                }
+
+                .form-label {
+                    color: #655a70;
+                    font-weight: 600;
+                }
+
+                .form-control,
+                .form-select {
+                    height: 45px;
+                    border-radius: 10px;
+                    border: 1px solid #d8ccec;
+                    background-color: rgba(255,255,255,0.90);
+                }
+
+                .form-control:focus,
+                .form-select:focus {
+                    border-color: #a98bc4;
+                    box-shadow: 0 0 0 0.2rem
+                        rgba(169,139,196,0.20);
+                }
+
+                .password-box {
+                    position: relative;
+                }
+
+                .password-box .form-control {
+                    padding-right: 45px;
+                }
+
+                .password-icon {
+                    position: absolute;
+                    right: 15px;
+                    top: 50%;
+                    transform: translateY(15%);
+                    color: #9b7bb8;
+                    cursor: pointer;
+                    font-size: 18px;
+                }
+
+                .password-icon:hover {
+                    color: #80609e;
+                }
+
+                .btn-register {
+                    height: 45px;
+                    border: none;
+                    border-radius: 12px;
+                    background-color: #9b7bb8;
+                    color: white;
+                    font-weight: 600;
+                    transition: 0.3s;
+                }
+
+                .btn-register:hover {
+                    background-color: #80609e;
+                    color: white;
+                    transform: translateY(-2px);
+                    box-shadow: 0 5px 15px
+                        rgba(128,96,158,0.25);
+                }
+
+                .btn-register:disabled {
+                    opacity: 0.7;
+                    cursor: not-allowed;
+                }
+
+                .signin-link {
+                    color: #80609e;
+                    font-weight: 600;
+                }
+
+                .signin-link:hover {
+                    color: #6d4f8e;
+                    text-decoration: underline !important;
+                }
+
+                .form-check-label {
+                    color: #716a78;
+                }
+
+                .form-check-input:checked {
+                    background-color: #9b7bb8;
+                    border-color: #9b7bb8;
+                }
+
+                .license-note {
+                    font-size: 12px;
+                    color: #8c8499;
+                    margin-top: 5px;
+                }
+
+                @media (max-width: 576px) {
+                    .register-card {
+                        max-width: 100%;
+                        border-radius: 20px;
+                        padding: 30px 25px !important;
+                    }
+                }
+            `}</style>
+
+            <div className="container py-4">
+                <div className="row justify-content-center">
+                    <div className="col-12 col-sm-10 col-md-8 col-lg-6">
+
+                        <div className="register-card p-4 p-md-5">
+
+                            <div className="logo-container">
+                                <img
+                                    src="/images.jfif"
+                                    alt="DentalCare Logo"
+                                />
+                            </div>
+
+                            <div className="text-center mb-4">
+                                <h2 className="register-title">
+                                    Create Account
+                                </h2>
+
+                                <p className="register-subtitle mb-0">
+                                    Register for your DentalCare account.
+                                </p>
+                            </div>
+
+                            {message && (
+                                <div
+                                    className={`alert alert-${messageType} text-center`}
+                                    role="alert"
+                                >
+                                    {message}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSubmit}>
+
+                                <div className="row g-2 mb-3">
+                                    <div className="col-6">
+                                        <label className="form-label">
+                                            First Name
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            name="firstName"
+                                            className="form-control"
+                                            placeholder="First name"
+                                            value={form.firstName}
+                                            onChange={handleChange}
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="col-6">
+                                        <label className="form-label">
+                                            Last Name
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            name="lastName"
+                                            className="form-control"
+                                            placeholder="Last name"
+                                            value={form.lastName}
+                                            onChange={handleChange}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="mb-3">
+                                    <label className="form-label">
+                                        Email
+                                    </label>
+
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        className="form-control"
+                                        placeholder="Enter your email"
+                                        value={form.email}
+                                        onChange={handleChange}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="mb-3">
+                                    <label className="form-label">
+                                        Account Type
+                                    </label>
+
+                                    <select
+                                        name="role"
+                                        className="form-select"
+                                        value={form.role}
+                                        onChange={handleChange}
+                                        required
+                                    >
+                                        <option value="">
+                                            Select account type
+                                        </option>
+
+                                        <option value="patient">
+                                            Patient
+                                        </option>
+
+                                        <option value="dentist">
+                                            Dentist
+                                        </option>
+                                    </select>
+                                </div>
+
+                                {form.role === "dentist" && (
+                                    <div className="mb-3">
+                                        <label className="form-label">
+                                            <i className="bi bi-card-text me-1"></i>
+                                            Professional License ID
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            name="licenseId"
+                                            className="form-control"
+                                            placeholder="Enter your professional license ID"
+                                            value={form.licenseId}
+                                            onChange={handleChange}
+                                            required
+                                        />
+
+                                        <div className="license-note">
+                                            Required for dentist registration.
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mb-3 password-box">
+                                    <label className="form-label">
+                                        Password
+                                    </label>
+
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        name="password"
+                                        className="form-control"
+                                        placeholder="Create a password"
+                                        value={form.password}
+                                        onChange={handleChange}
+                                        required
+                                    />
+
+                                    <i
+                                        className={`bi ${
+                                            showPassword
+                                                ? "bi-eye"
+                                                : "bi-eye-slash"
+                                        } password-icon`}
+                                        onClick={() =>
+                                            setShowPassword(!showPassword)
+                                        }
+                                    ></i>
+                                </div>
+
+                                <div className="mb-3 password-box">
+                                    <label className="form-label">
+                                        Confirm Password
+                                    </label>
+
+                                    <input
+                                        type={
+                                            showConfirmPassword
+                                                ? "text"
+                                                : "password"
+                                        }
+                                        name="confirmPassword"
+                                        className="form-control"
+                                        placeholder="Confirm your password"
+                                        value={form.confirmPassword}
+                                        onChange={handleChange}
+                                        required
+                                    />
+
+                                    <i
+                                        className={`bi ${
+                                            showConfirmPassword
+                                                ? "bi-eye"
+                                                : "bi-eye-slash"
+                                        } password-icon`}
+                                        onClick={() =>
+                                            setShowConfirmPassword(
+                                                !showConfirmPassword
+                                            )
+                                        }
+                                    ></i>
+                                </div>
+
+                                <div className="form-check mb-4">
+                                    <input
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        name="terms"
+                                        id="terms"
+                                        checked={form.terms}
+                                        onChange={handleChange}
+                                        required
+                                    />
+
+                                    <label
+                                        className="form-check-label small"
+                                        htmlFor="terms"
+                                    >
+                                        I agree to the terms and conditions.
+                                    </label>
+                                </div>
+
+                                <div className="d-grid">
+                                    <button
+                                        type="submit"
+                                        className="btn btn-register"
+                                        disabled={loading}
+                                    >
+                                        <i className="bi bi-person-plus me-1"></i>
+
+                                        {loading
+                                            ? "Registering..."
+                                            : "Create Account"}
+                                    </button>
+                                </div>
+
+                                <div className="text-center mt-4">
+                                    <small className="text-secondary">
+                                        Already have an account?{" "}
+
+                                        <a
+                                            href="/login"
+                                            className="signin-link text-decoration-none"
+                                        >
+                                            Login
+                                        </a>
+                                    </small>
+                                </div>
+
+                            </form>
                         </div>
-</div>
-
-            <div className="mb-3 password-box">
-              <label htmlFor="password" className="form-label">
-
-                            Password
-
-                        </label>
-              <input type="password" id="password" className="form-control" placeholder="Create a password" required="" />
-              <i className="bi bi-eye-slash password-icon" onClick={(event) => runInline("togglePassword(\n                                'password',\n                                this\n                            )", event)}>
-</i>
-</div>
-
-            <div className="mb-3 password-box">
-              <label htmlFor="confirmPassword" className="form-label">
-
-                            Confirm Password
-
-                        </label>
-              <input type="password" id="confirmPassword" className="form-control" placeholder="Confirm your password" required="" />
-              <i className="bi bi-eye-slash password-icon" onClick={(event) => runInline("togglePassword(\n                                'confirmPassword',\n                                this\n                            )", event)}>
-</i>
-</div>
-
-            <div className="form-check mb-4">
-              <input className="form-check-input" type="checkbox" id="terms" required="" />
-              <label className="form-check-label small" htmlFor="terms">
-
-                            I agree to the terms and
-                            conditions.
-
-                        </label>
-</div>
-
-            <div className="d-grid">
-              <button type="submit" className="btn btn-register">
-                <i className="bi bi-person-plus me-1">
-</i>
-
-                            Create Account
-
-                        </button>
-</div>
-
-            <div className="text-center mt-4">
-              <small className="text-secondary">
-
-                            Already have an account?
-
-                                            <a href="/" className="signin-link text-decoration-none">
-
-                                Login
-
-                            </a>
-</small>
-</div>
-</form>
-</div>
-</div>
-</div>
-</div>
-    </>
-  );
+                    </div>
+                </div>
+            </div>
+        </>
+    );
 }

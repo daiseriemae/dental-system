@@ -1,14 +1,71 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
-const BASE_URL =
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:8080";
+const BASE_URL = "https://dental-system-rzqb.onrender.com";
+const API_URL = `${BASE_URL}/api/services`;
 
-const API_URL = `${BASE_URL.replace(/\/+$/, "")}/api/services`;
+const getServiceName = (service) => {
+    return String(
+        service?.name ||
+        service?.service_name ||
+        service?.serviceName ||
+        service?.service ||
+        service?.title ||
+        ""
+    ).trim();
+};
+
+// Assign the correct image based on the actual service name.
+const getServiceImage = (name) => {
+    const service = String(name || "")
+        .toLowerCase()
+        .replace(/[_-]/g, " ")
+        .trim();
+
+    if (service.includes("cleaning")) {
+        return "/dentist-cleaning-teeth.jpeg";
+    }
+
+    if (
+        service.includes("check up") ||
+        service.includes("checkup") ||
+        service.includes("examination")
+    ) {
+        return "/what-to-expect-dental-checkup-facts.jpg";
+    }
+
+    if (service.includes("filling")) {
+        return "/tooth-filling.webp";
+    }
+
+    if (service.includes("whitening")) {
+        return "/teeth-whitening.webp";
+    }
+
+    if (service.includes("extraction")) {
+        return "/extraction.jpg";
+    }
+
+    if (service.includes("braces") || service.includes("orthodontic")) {
+        return "/brace.jfif";
+    }
+
+    // Unknown service: show the fallback icon instead of the wrong image.
+    return "";
+};
+
+// Normalize every service returned by the backend.
+const normalizeService = (service) => ({
+    ...service,
+    id: String(service.id),
+    name: getServiceName(service),
+    price: Number(service.price || 0),
+    description: service.description || "",
+});
 
 const DentistServices = () => {
     const [services, setServices] = useState([]);
+
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -24,63 +81,69 @@ const DentistServices = () => {
     const [message, setMessage] = useState("");
     const [messageType, setMessageType] = useState("success");
 
-    const getServiceImage = (name) => {
-        const service = (name || "").toLowerCase();
-
-        if (service.includes("cleaning")) return "/dentist-cleaning-teeth.jpeg";
-        if (service.includes("filling")) return "/tooth-filling.webp";
-        if (service.includes("whitening")) return "/teeth-whitening.webp";
-        if (service.includes("extraction")) return "/extraction.jpg";
-
-        if (
-            service.includes("check-up") ||
-            service.includes("checkup") ||
-            service.includes("check up")
-        ) {
-            return "/what-to-expect-dental-checkup-facts.jpg";
-        }
-
-        if (service.includes("braces")) return "/brace.jfif";
-        return "/dentist-cleaning-teeth.jpeg";
-    };
-
     const showMessage = (text, type = "success") => {
         setMessage(text);
         setMessageType(type);
+
         window.clearTimeout(showMessage.timeoutId);
-        showMessage.timeoutId = window.setTimeout(() => setMessage(""), 3000);
+
+        showMessage.timeoutId = window.setTimeout(() => {
+            setMessage("");
+        }, 3000);
     };
 
+    const readResponse = async (response) => {
+        const text = await response.text();
+
+        try {
+            return text ? JSON.parse(text) : {};
+        } catch {
+            throw new Error(
+                "The server returned an invalid response. Check your backend."
+            );
+        }
+    };
+
+    // LOAD SERVICES
     const fetchServices = async () => {
         try {
             setLoading(true);
+
             const response = await fetch(API_URL);
+            const data = await readResponse(response);
 
-            if (!response.ok) {
-                throw new Error("Failed to load services.");
-            }
-
-            const data = await response.json();
             console.log("SERVICES FROM BACKEND:", data);
 
-            const cleanServices = Array.isArray(data)
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to load services."
+                );
+            }
+
+            const serviceList = Array.isArray(data)
                 ? data
-                    .filter(
-                        (service) =>
-                            service &&
-                            service.id !== undefined &&
-                            service.id !== null
-                    )
-                    .map((service) => ({
-                        ...service,
-                        id: String(service.id),
-                    }))
-                : [];
+                : Array.isArray(data.services)
+                    ? data.services
+                    : [];
+
+            const cleanServices = serviceList
+                .filter(
+                    (service) =>
+                        service &&
+                        service.id !== undefined &&
+                        service.id !== null
+                )
+                .map(normalizeService);
+
+            console.log("NORMALIZED SERVICES:", cleanServices);
 
             setServices(cleanServices);
         } catch (error) {
             console.error("LOAD SERVICES ERROR:", error);
-            showMessage(error.message || "Failed to load services.", "danger");
+            showMessage(
+                error.message || "Failed to load services.",
+                "danger"
+            );
         } finally {
             setLoading(false);
         }
@@ -96,6 +159,7 @@ const DentistServices = () => {
         setServiceDescription("");
     };
 
+    // ADD SERVICE MODAL
     const openAddModal = () => {
         resetForm();
         setMessage("");
@@ -107,6 +171,7 @@ const DentistServices = () => {
         resetForm();
     };
 
+    // FORM VALIDATION
     const validateForm = () => {
         if (!serviceName.trim()) {
             showMessage("Please enter a service name.", "danger");
@@ -125,8 +190,10 @@ const DentistServices = () => {
         return true;
     };
 
+    // ADD SERVICE
     const handleAddService = async (event) => {
         event.preventDefault();
+
         if (!validateForm()) return;
 
         try {
@@ -134,52 +201,69 @@ const DentistServices = () => {
 
             const response = await fetch(API_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                },
                 body: JSON.stringify({
                     name: serviceName.trim(),
+                    service_name: serviceName.trim(),
                     price: Number(servicePrice),
                     description: serviceDescription.trim(),
                 }),
             });
 
-            const data = await response.json();
+            const data = await readResponse(response);
+
             console.log("ADD SERVICE RESPONSE:", data);
 
             if (!response.ok) {
-                throw new Error(data.message || "Failed to add service.");
+                throw new Error(
+                    data.message || "Failed to add service."
+                );
             }
 
-            if (!data.service || data.service.id == null) {
-                throw new Error("Backend did not return the new service with an ID.");
+            const savedService = data.service || data;
+
+            if (!savedService || savedService.id == null) {
+                throw new Error(
+                    "Backend did not return the new service with an ID."
+                );
             }
 
-            const newService = {
-                ...data.service,
-                id: String(data.service.id),
-            };
+            const newService = normalizeService(savedService);
 
             setServices((current) => [...current, newService]);
+
             closeAddModal();
             showMessage("Service added successfully.");
         } catch (error) {
             console.error("ADD SERVICE ERROR:", error);
-            showMessage(error.message || "Failed to add service.", "danger");
+            showMessage(
+                error.message || "Failed to add service.",
+                "danger"
+            );
         } finally {
             setLoading(false);
         }
     };
 
+    // EDIT SERVICE MODAL
     const openEditModal = (service) => {
         if (!service || service.id == null || service.id === "") {
-            showMessage("Cannot edit service: Service ID is missing.", "danger");
+            showMessage(
+                "Cannot edit service: Service ID is missing.",
+                "danger"
+            );
             return;
         }
 
-        const selectedService = { ...service, id: String(service.id) };
+        const selectedService = normalizeService(service);
+
         setEditingService(selectedService);
-        setServiceName(service.name || "");
-        setServicePrice(service.price ?? "");
-        setServiceDescription(service.description || "");
+        setServiceName(selectedService.name);
+        setServicePrice(String(selectedService.price));
+        setServiceDescription(selectedService.description);
+
         setMessage("");
         setShowEditModal(true);
     };
@@ -190,6 +274,7 @@ const DentistServices = () => {
         resetForm();
     };
 
+    // UPDATE SERVICE
     const handleEditService = async (event) => {
         event.preventDefault();
 
@@ -205,35 +290,52 @@ const DentistServices = () => {
         try {
             setLoading(true);
 
-            const response = await fetch(`${API_URL}/${encodeURIComponent(serviceId)}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: serviceName.trim(),
-                    price: Number(servicePrice),
-                    description: serviceDescription.trim(),
-                }),
-            });
+            const response = await fetch(
+                `${API_URL}/${encodeURIComponent(serviceId)}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        name: serviceName.trim(),
+                        service_name: serviceName.trim(),
+                        price: Number(servicePrice),
+                        description: serviceDescription.trim(),
+                    }),
+                }
+            );
 
-            const data = await response.json();
+            const data = await readResponse(response);
+
             console.log("EDIT SERVICE RESPONSE:", data);
 
             if (!response.ok) {
-                throw new Error(data.message || "Failed to update service.");
+                throw new Error(
+                    data.message || "Failed to update service."
+                );
             }
 
-            if (!data.service) {
-                throw new Error("Backend did not return the updated service.");
-            }
+            const savedService = data.service || data;
 
-            const updatedService = {
-                ...data.service,
-                id: String(data.service.id ?? serviceId),
-            };
+            const updatedService = normalizeService({
+                ...editingService,
+                ...savedService,
+                id: savedService.id ?? serviceId,
+                name:
+                    getServiceName(savedService) ||
+                    serviceName.trim(),
+                price: savedService.price ?? Number(servicePrice),
+                description:
+                    savedService.description ??
+                    serviceDescription.trim(),
+            });
 
             setServices((current) =>
                 current.map((service) =>
-                    String(service.id) === serviceId ? updatedService : service
+                    String(service.id) === serviceId
+                        ? updatedService
+                        : service
                 )
             );
 
@@ -241,19 +343,26 @@ const DentistServices = () => {
             showMessage("Service updated successfully.");
         } catch (error) {
             console.error("EDIT SERVICE ERROR:", error);
-            showMessage(error.message || "Failed to update service.", "danger");
+            showMessage(
+                error.message || "Failed to update service.",
+                "danger"
+            );
         } finally {
             setLoading(false);
         }
     };
 
+    // DELETE SERVICE MODAL
     const openDeleteModal = (service) => {
         if (!service || service.id == null || service.id === "") {
-            showMessage("Cannot delete service: Service ID is missing.", "danger");
+            showMessage(
+                "Cannot delete service: Service ID is missing.",
+                "danger"
+            );
             return;
         }
 
-        setServiceToDelete({ ...service, id: String(service.id) });
+        setServiceToDelete(normalizeService(service));
         setMessage("");
         setShowDeleteModal(true);
     };
@@ -263,6 +372,7 @@ const DentistServices = () => {
         setServiceToDelete(null);
     };
 
+    // DELETE SERVICE
     const handleDeleteService = async () => {
         if (!serviceToDelete || serviceToDelete.id == null) {
             showMessage("Service ID is missing.", "danger");
@@ -276,50 +386,74 @@ const DentistServices = () => {
 
             const response = await fetch(
                 `${API_URL}/${encodeURIComponent(serviceId)}`,
-                { method: "DELETE" }
+                {
+                    method: "DELETE",
+                }
             );
 
-            const data = await response.json();
+            const data = await readResponse(response);
+
             console.log("DELETE SERVICE RESPONSE:", data);
 
             if (!response.ok) {
-                throw new Error(data.message || "Failed to delete service.");
+                throw new Error(
+                    data.message || "Failed to delete service."
+                );
             }
 
             setServices((current) =>
-                current.filter((service) => String(service.id) !== serviceId)
+                current.filter(
+                    (service) => String(service.id) !== serviceId
+                )
             );
 
             closeDeleteModal();
             showMessage("Service deleted successfully.");
         } catch (error) {
             console.error("DELETE SERVICE ERROR:", error);
-            showMessage(error.message || "Failed to delete service.", "danger");
+            showMessage(
+                error.message || "Failed to delete service.",
+                "danger"
+            );
         } finally {
             setLoading(false);
         }
     };
 
+    // PRICE FORMAT
     const formatPrice = (price) =>
         `₱${Number(price || 0).toLocaleString("en-PH", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         })}`;
 
+    // ADD / EDIT FORM
     const renderServiceForm = (onSubmit, submitLabel) => (
         <form onSubmit={onSubmit}>
             <div className="modal-header border-0">
-                <h5 className="modal-title fw-bold" style={{ color: "#80609e" }}>
+                <h5
+                    className="modal-title fw-bold"
+                    style={{ color: "#80609e" }}
+                >
                     {showAddModal ? (
-                        <><i className="bi bi-plus-circle me-2"></i>Add Service</>
+                        <>
+                            <i className="bi bi-plus-circle me-2"></i>
+                            Add Service
+                        </>
                     ) : (
-                        <><i className="bi bi-pencil-square me-2"></i>Edit Service</>
+                        <>
+                            <i className="bi bi-pencil-square me-2"></i>
+                            Edit Service
+                        </>
                     )}
                 </h5>
+
                 <button
                     type="button"
                     className="btn-close"
-                    onClick={showAddModal ? closeAddModal : closeEditModal}
+                    onClick={
+                        showAddModal ? closeAddModal : closeEditModal
+                    }
                     disabled={loading}
                     aria-label="Close"
                 />
@@ -329,31 +463,46 @@ const DentistServices = () => {
                 {showEditModal && editingService && (
                     <div
                         className="alert mb-3"
-                        style={{ backgroundColor: "#f3efff", color: "#80609e", border: "none" }}
+                        style={{
+                            backgroundColor: "#f3efff",
+                            color: "#80609e",
+                            border: "none",
+                        }}
                     >
-                        Editing Service ID: <strong>{editingService.id}</strong>
+                        Editing Service ID:{" "}
+                        <strong>{editingService.id}</strong>
                     </div>
                 )}
 
                 <div className="mb-3">
-                    <label className="form-label fw-semibold">Service Name</label>
+                    <label className="form-label fw-semibold">
+                        Service Name
+                    </label>
+
                     <input
                         type="text"
                         className="form-control"
                         value={serviceName}
-                        onChange={(event) => setServiceName(event.target.value)}
+                        onChange={(event) =>
+                            setServiceName(event.target.value)
+                        }
                         placeholder="Enter service name"
                         required
                     />
                 </div>
 
                 <div className="mb-3">
-                    <label className="form-label fw-semibold">Price</label>
+                    <label className="form-label fw-semibold">
+                        Price
+                    </label>
+
                     <input
                         type="number"
                         className="form-control"
                         value={servicePrice}
-                        onChange={(event) => setServicePrice(event.target.value)}
+                        onChange={(event) =>
+                            setServicePrice(event.target.value)
+                        }
                         placeholder="Enter price"
                         min="0"
                         step="0.01"
@@ -362,12 +511,17 @@ const DentistServices = () => {
                 </div>
 
                 <div className="mb-3">
-                    <label className="form-label fw-semibold">Description</label>
+                    <label className="form-label fw-semibold">
+                        Description
+                    </label>
+
                     <textarea
                         className="form-control"
                         rows="4"
                         value={serviceDescription}
-                        onChange={(event) => setServiceDescription(event.target.value)}
+                        onChange={(event) =>
+                            setServiceDescription(event.target.value)
+                        }
                         placeholder="Enter service description"
                     />
                 </div>
@@ -377,16 +531,22 @@ const DentistServices = () => {
                 <button
                     type="button"
                     className="btn btn-light"
-                    onClick={showAddModal ? closeAddModal : closeEditModal}
+                    onClick={
+                        showAddModal ? closeAddModal : closeEditModal
+                    }
                     disabled={loading}
                 >
                     Cancel
                 </button>
+
                 <button
                     type="submit"
                     className="btn"
                     disabled={loading}
-                    style={{ backgroundColor: "#9b7bb8", color: "#fff" }}
+                    style={{
+                        backgroundColor: "#9b7bb8",
+                        color: "#fff",
+                    }}
                 >
                     {loading ? "Saving..." : submitLabel}
                 </button>
@@ -399,13 +559,16 @@ const DentistServices = () => {
             <Sidebar role="dentist" active="services" />
 
             <main className="dentist-services-main">
+                {/* PAGE HEADER */}
                 <div className="d-flex justify-content-between align-items-center gap-3 mb-4 services-page-header">
                     <div className="d-flex align-items-center gap-3 services-heading-group">
                         <button
                             type="button"
                             className="mobile-sidebar-toggle"
                             onClick={() => {
-                                document.getElementById("sidebar")?.classList.add("show");
+                                document
+                                    .getElementById("sidebar")
+                                    ?.classList.add("show");
                             }}
                             aria-label="Open navigation menu"
                         >
@@ -413,29 +576,44 @@ const DentistServices = () => {
                         </button>
 
                         <div>
-                            <h2 className="fw-bold mb-1" style={{ color: "#80609e" }}>
+                            <h2
+                                className="fw-bold mb-1"
+                                style={{ color: "#80609e" }}
+                            >
                                 Dental Services
                             </h2>
-                            <p className="mb-0" style={{ color: "#777" }}>
+
+                            <p
+                                className="mb-0"
+                                style={{ color: "#777" }}
+                            >
                                 Manage the services offered by your clinic
                             </p>
                         </div>
                     </div>
 
                     <div className="text-end dentist-profile-label">
-                        <div className="fw-semibold" style={{ color: "#80609e" }}>
-                            Dr. Maria Santos
+                        <div
+                            className="fw-semibold"
+                            style={{ color: "#80609e" }}
+                        >
+                            Dr. Jhulance Fernandez
                         </div>
-                        <small style={{ color: "#777" }}>Dentist</small>
+
+                        <small style={{ color: "#777" }}>
+                            Dentist
+                        </small>
                     </div>
                 </div>
 
+                {/* MESSAGE */}
                 {message && (
                     <div
                         className={`alert alert-${messageType} d-flex justify-content-between align-items-center gap-2`}
                         role="alert"
                     >
                         <span>{message}</span>
+
                         <button
                             type="button"
                             className="btn-close"
@@ -445,14 +623,22 @@ const DentistServices = () => {
                     </div>
                 )}
 
+                {/* SERVICES TOOLBAR */}
                 <section className="card border-0 shadow-sm mb-4 services-toolbar">
                     <div className="card-body p-4">
                         <div className="d-flex justify-content-between align-items-center gap-3 services-toolbar-content">
                             <div>
-                                <h5 className="fw-bold mb-1" style={{ color: "#80609e" }}>
+                                <h5
+                                    className="fw-bold mb-1"
+                                    style={{ color: "#80609e" }}
+                                >
                                     Available Services
                                 </h5>
-                                <p className="mb-0" style={{ color: "#777" }}>
+
+                                <p
+                                    className="mb-0"
+                                    style={{ color: "#777" }}
+                                >
                                     Add, edit, or delete dental services.
                                 </p>
                             </div>
@@ -469,110 +655,162 @@ const DentistServices = () => {
                     </div>
                 </section>
 
+                {/* SERVICES LIST */}
                 {loading && services.length === 0 ? (
                     <div className="text-center py-5">
-                        <div className="spinner-border" style={{ color: "#9b7bb8" }} />
-                        <p className="mt-3 text-muted">Loading services...</p>
+                        <div
+                            className="spinner-border"
+                            style={{ color: "#9b7bb8" }}
+                        />
+
+                        <p className="mt-3 text-muted">
+                            Loading services...
+                        </p>
                     </div>
                 ) : services.length === 0 ? (
                     <div className="card border-0 shadow-sm text-center empty-services">
                         <div className="card-body py-5">
                             <i className="bi bi-tooth empty-services-icon" />
-                            <h5 className="mt-3 fw-bold" style={{ color: "#80609e" }}>
+
+                            <h5
+                                className="mt-3 fw-bold"
+                                style={{ color: "#80609e" }}
+                            >
                                 No services available
                             </h5>
-                            <p className="text-muted">Add your first dental service.</p>
+
+                            <p className="text-muted">
+                                Add your first dental service.
+                            </p>
                         </div>
                     </div>
                 ) : (
                     <div className="row g-4 services-grid">
-                        {services.map((service) => (
-                            <div
-                                className="col-12 col-sm-6 col-xl-4"
-                                key={`service-${service.id}`}
-                            >
-                                <article className="card border-0 shadow-sm h-100 service-card">
-                                    <div className="card-body p-3 p-md-4">
-                                        <div className="d-flex justify-content-end mb-2">
-                                            <span className="badge service-id-badge">
-                                                Service ID: {service.id}
-                                            </span>
+                        {services.map((service) => {
+                            const image = getServiceImage(service.name);
+
+                            return (
+                                <div
+                                    className="col-12 col-sm-6 col-xl-4"
+                                    key={`service-${service.id}`}
+                                >
+                                    <article className="card border-0 shadow-sm h-100 service-card">
+                                        <div className="card-body p-3 p-md-4">
+                                            <div className="d-flex justify-content-end mb-2">
+                                                <span className="badge service-id-badge">
+                                                    Service ID: {service.id}
+                                                </span>
+                                            </div>
+
+                                            {/* CORRECT SERVICE IMAGE */}
+                                            <div className="service-image-wrapper">
+                                                {image ? (
+                                                    <img
+                                                        src={image}
+                                                        alt={service.name}
+                                                        loading="lazy"
+                                                        onError={(event) => {
+                                                            event.currentTarget.style.display =
+                                                                "none";
+
+                                                            event.currentTarget.parentElement.classList.add(
+                                                                "image-unavailable"
+                                                            );
+                                                        }}
+                                                    />
+                                                ) : null}
+
+                                                <i
+                                                    className="bi bi-tooth service-image-fallback"
+                                                    aria-hidden="true"
+                                                />
+                                            </div>
+
+                                            <h5 className="fw-bold mb-2 service-name">
+                                                {service.name ||
+                                                    "Unnamed Service"}
+                                            </h5>
+
+                                            <h6 className="fw-bold mb-3 service-price">
+                                                {formatPrice(service.price)}
+                                            </h6>
+
+                                            <p className="text-muted mb-4 service-description">
+                                                {service.description ||
+                                                    "No description available."}
+                                            </p>
+
+                                            <div className="d-flex gap-2 service-actions">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm flex-fill edit-service-button"
+                                                    onClick={() =>
+                                                        openEditModal(service)
+                                                    }
+                                                >
+                                                    <i className="bi bi-pencil me-1"></i>
+                                                    Edit
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm flex-fill delete-service-button"
+                                                    onClick={() =>
+                                                        openDeleteModal(service)
+                                                    }
+                                                >
+                                                    <i className="bi bi-trash me-1"></i>
+                                                    Delete
+                                                </button>
+                                            </div>
                                         </div>
-
-                                        <div className="service-image-wrapper">
-                                            <img
-                                                src={getServiceImage(service.name)}
-                                                alt={service.name || "Dental service"}
-                                                loading="lazy"
-                                                onError={(event) => {
-                                                    event.currentTarget.onerror = null;
-                                                    event.currentTarget.style.display = "none";
-                                                    event.currentTarget.parentElement.classList.add("image-unavailable");
-                                                }}
-                                            />
-                                            <i className="bi bi-tooth service-image-fallback" aria-hidden="true" />
-                                        </div>
-
-                                        <h5 className="fw-bold mb-2 service-name">
-                                            {service.name}
-                                        </h5>
-
-                                        <h6 className="fw-bold mb-3 service-price">
-                                            {formatPrice(service.price)}
-                                        </h6>
-
-                                        <p className="text-muted mb-4 service-description">
-                                            {service.description || "No description available."}
-                                        </p>
-
-                                        <div className="d-flex gap-2 service-actions">
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm flex-fill edit-service-button"
-                                                onClick={() => openEditModal(service)}
-                                            >
-                                                <i className="bi bi-pencil me-1"></i>
-                                                Edit
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm flex-fill delete-service-button"
-                                                onClick={() => openDeleteModal(service)}
-                                            >
-                                                <i className="bi bi-trash me-1"></i>
-                                                Delete
-                                            </button>
-                                        </div>
-                                    </div>
-                                </article>
-                            </div>
-                        ))}
+                                    </article>
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </main>
 
+            {/* ADD / EDIT MODAL */}
             {(showAddModal || showEditModal) && (
-                <div className="modal fade show d-block services-modal-backdrop" tabIndex="-1">
+                <div
+                    className="modal fade show d-block services-modal-backdrop"
+                    tabIndex="-1"
+                >
                     <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
                         <div className="modal-content border-0 services-modal">
                             {showAddModal
-                                ? renderServiceForm(handleAddService, "Add Service")
-                                : renderServiceForm(handleEditService, "Save Changes")}
+                                ? renderServiceForm(
+                                    handleAddService,
+                                    "Add Service"
+                                )
+                                : renderServiceForm(
+                                    handleEditService,
+                                    "Save Changes"
+                                )}
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* DELETE MODAL */}
             {showDeleteModal && serviceToDelete && (
-                <div className="modal fade show d-block services-modal-backdrop" tabIndex="-1">
+                <div
+                    className="modal fade show d-block services-modal-backdrop"
+                    tabIndex="-1"
+                >
                     <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
                         <div className="modal-content border-0 services-modal">
                             <div className="modal-header border-0">
-                                <h5 className="modal-title fw-bold" style={{ color: "#842029" }}>
+                                <h5
+                                    className="modal-title fw-bold"
+                                    style={{ color: "#842029" }}
+                                >
                                     <i className="bi bi-exclamation-triangle me-2"></i>
                                     Delete Service
                                 </h5>
+
                                 <button
                                     type="button"
                                     className="btn-close"
@@ -588,14 +826,23 @@ const DentistServices = () => {
                                 </p>
 
                                 <div className="p-3 rounded delete-service-summary">
-                                    <div className="fw-bold" style={{ color: "#80609e" }}>
+                                    <div
+                                        className="fw-bold"
+                                        style={{ color: "#80609e" }}
+                                    >
                                         {serviceToDelete.name}
                                     </div>
+
                                     <div className="text-muted">
-                                        Price: {formatPrice(serviceToDelete.price)}
+                                        Price:{" "}
+                                        {formatPrice(serviceToDelete.price)}
                                     </div>
+
                                     <div className="text-muted">
-                                        Service ID: <strong>{serviceToDelete.id}</strong>
+                                        Service ID:{" "}
+                                        <strong>
+                                            {serviceToDelete.id}
+                                        </strong>
                                     </div>
                                 </div>
                             </div>
@@ -609,12 +856,16 @@ const DentistServices = () => {
                                 >
                                     Cancel
                                 </button>
+
                                 <button
                                     type="button"
                                     className="btn"
                                     onClick={handleDeleteService}
                                     disabled={loading}
-                                    style={{ backgroundColor: "#dc3545", color: "#fff" }}
+                                    style={{
+                                        backgroundColor: "#dc3545",
+                                        color: "#fff",
+                                    }}
                                 >
                                     {loading ? "Deleting..." : "Delete"}
                                 </button>
@@ -624,6 +875,7 @@ const DentistServices = () => {
                 </div>
             )}
 
+            {/* PAGE STYLES */}
             <style>{`
                 .dentist-services-page {
                     min-height: 100vh;
@@ -715,7 +967,13 @@ const DentistServices = () => {
                     border-radius: 9px;
                 }
 
-                .service-image-wrapper.image-unavailable .service-image-fallback {
+                .service-image-wrapper.image-unavailable
+                .service-image-fallback {
+                    display: flex;
+                }
+
+                .service-image-wrapper:not(:has(img))
+                .service-image-fallback {
                     display: flex;
                 }
 

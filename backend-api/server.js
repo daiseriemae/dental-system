@@ -1,3 +1,4 @@
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
@@ -6,15 +7,66 @@ const mysql = require("mysql2/promise");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+const db = mysql.createPool({
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT || 4000),
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+
+    ssl: {
+        minVersion: "TLSv1.2"
+    },
+
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
+
+// ==================================================
+// MIDDLEWARE
+// ==================================================
+
 app.use(cors());
 app.use(express.json());
 
-const db = mysql.createPool({
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "dentalcare_db"
+app.use((req, res, next) => {
+    console.log(`\n${req.method} ${req.originalUrl}`);
+    next();
 });
+
+async function connectDatabase() {
+    try {
+        const connection = await db.getConnection();
+
+        console.log("TiDB Cloud Connected Successfully");
+
+        connection.release();
+    } catch (error) {
+        console.error(
+            "TiDB Cloud Connection Failed:",
+            error.message
+        );
+    }
+}
+
+connectDatabase();
+async function connectDatabase() {
+    try {
+        const connection = await db.getConnection();
+
+        console.log("TiDB Cloud Connected Successfully");
+
+        connection.release();
+    } catch (error) {
+        console.error(
+            "TiDB Cloud Connection Failed:",
+            error.message
+        );
+    }
+}
+
+connectDatabase();
 
 async function connectDatabase() {
     try {
@@ -28,10 +80,9 @@ async function connectDatabase() {
 
 connectDatabase();
 
-app.use((req, res, next) => {
-    console.log(`\n${req.method} ${req.originalUrl}`);
-    next();
-});
+// ==================================================
+// LOGGING
+// ==================================================
 
 function logBlock(title, data) {
     console.log("\n========================================");
@@ -40,11 +91,6 @@ function logBlock(title, data) {
     console.log("========================================\n");
 }
 
-app.get("/", (req, res) => {
-    res.send("DentalCare API is running.");
-});
-
-
 app.get("/api/services", async (req, res) => {
     try {
         const [services] = await db.query(
@@ -52,13 +98,17 @@ app.get("/api/services", async (req, res) => {
         );
 
         res.json(services);
+
     } catch (error) {
         console.error("Get services error:", error.message);
-        res.status(500).json({ message: "Failed to retrieve services." });
+
+        res.status(500).json({
+            message: "Failed to retrieve services."
+        });
     }
 });
 
-
+// ADD SERVICE
 app.post("/api/services", async (req, res) => {
     try {
         const { name, price, description = "" } = req.body;
@@ -77,8 +127,14 @@ app.post("/api/services", async (req, res) => {
         }
 
         const [result] = await db.query(
-            "INSERT INTO services (name, price, description) VALUES (?, ?, ?)",
-            [String(name).trim(), numericPrice, String(description || "")]
+            `INSERT INTO services
+            (name, price, description)
+            VALUES (?, ?, ?)`,
+            [
+                String(name).trim(),
+                numericPrice,
+                String(description || "")
+            ]
         );
 
         const [rows] = await db.query(
@@ -92,12 +148,18 @@ app.post("/api/services", async (req, res) => {
             message: "Service added successfully.",
             service: rows[0]
         });
+
     } catch (error) {
         console.error("Add service error:", error.message);
-        res.status(500).json({ message: "Failed to add service." });
+
+        res.status(500).json({
+            message: "Failed to add service.",
+            error: error.message
+        });
     }
 });
 
+// UPDATE SERVICE
 app.put("/api/services/:id", async (req, res) => {
     try {
         const id = req.params.id;
@@ -109,7 +171,9 @@ app.put("/api/services/:id", async (req, res) => {
         );
 
         if (existing.length === 0) {
-            return res.status(404).json({ message: "Service not found." });
+            return res.status(404).json({
+                message: "Service not found."
+            });
         }
 
         const service = existing[0];
@@ -154,7 +218,10 @@ app.put("/api/services/:id", async (req, res) => {
         if (description !== undefined) {
             const newDescription = String(description || "");
 
-            if (newDescription !== String(service.description || "")) {
+            if (
+                newDescription !==
+                String(service.description || "")
+            ) {
                 updates.push("description = ?");
                 values.push(newDescription);
                 changed.description = newDescription;
@@ -165,14 +232,19 @@ app.put("/api/services/:id", async (req, res) => {
             values.push(id);
 
             await db.query(
-                `UPDATE services SET ${updates.join(", ")} WHERE id = ?`,
+                `UPDATE services
+                 SET ${updates.join(", ")}
+                 WHERE id = ?`,
                 values
             );
 
-            logBlock("SERVICE UPDATED — CHANGED FIELDS ONLY", {
-                id,
-                ...changed
-            });
+            logBlock(
+                "SERVICE UPDATED — CHANGED FIELDS ONLY",
+                {
+                    id,
+                    ...changed
+                }
+            );
         }
 
         const [updated] = await db.query(
@@ -184,9 +256,14 @@ app.put("/api/services/:id", async (req, res) => {
             message: "Service updated successfully.",
             service: updated[0]
         });
+
     } catch (error) {
         console.error("Update service error:", error.message);
-        res.status(500).json({ message: "Failed to update service." });
+
+        res.status(500).json({
+            message: "Failed to update service.",
+            error: error.message
+        });
     }
 });
 
@@ -201,7 +278,9 @@ app.delete("/api/services/:id", async (req, res) => {
         );
 
         if (existing.length === 0) {
-            return res.status(404).json({ message: "Service not found." });
+            return res.status(404).json({
+                message: "Service not found."
+            });
         }
 
         await db.query(
@@ -215,37 +294,21 @@ app.delete("/api/services/:id", async (req, res) => {
             message: "Service deleted successfully.",
             service: existing[0]
         });
+
     } catch (error) {
         console.error("Delete service error:", error.message);
+
         res.status(500).json({
-            message: "Failed to delete service. Check whether appointments reference it."
+            message: "Failed to delete service. Check whether appointments reference it.",
+            error: error.message
         });
     }
 });
 
 // ==================================================
-// APPOINTMENTS
-// MySQL table: appointments
+// CREATE APPOINTMENT
 // ==================================================
 
-// GET APPOINTMENTS
-async function listAppointments(req, res) {
-    try {
-        const [appointments] = await db.query(
-            "SELECT * FROM appointments ORDER BY id DESC"
-        );
-
-        res.json(appointments);
-    } catch (error) {
-        console.error("Get appointments error:", error.message);
-        res.status(500).json({ message: "Failed to retrieve appointments." });
-    }
-}
-
-app.get("/api/appointment", listAppointments);
-app.get("/api/appointments", listAppointments);
-
-// ADD APPOINTMENT
 async function createAppointment(req, res) {
     try {
         const {
@@ -260,20 +323,82 @@ async function createAppointment(req, res) {
             notes
         } = req.body;
 
+        // VALIDATE REQUIRED FIELDS
         if (!patientId || !service || !dentist || !date || !time) {
             return res.status(400).json({
                 message: "Please complete all required appointment fields."
             });
         }
 
-        let serviceName = String(service);
-        let servicePrice = price === undefined || price === ""
-            ? null
-            : Number(price);
+        // VALIDATE DATE
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+            return res.status(400).json({
+                message: "Invalid appointment date."
+            });
+        }
 
+        // CONVERT TIME TO MYSQL FORMAT
+        function convertTime(value) {
+            const input = String(value).trim();
+
+            const match = input.match(
+                /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i
+            );
+
+            if (match) {
+                let hours = Number(match[1]);
+                const minutes = Number(match[2]);
+                const period = match[3].toUpperCase();
+
+                if (
+                    hours < 1 ||
+                    hours > 12 ||
+                    minutes < 0 ||
+                    minutes > 59
+                ) {
+                    return null;
+                }
+
+                if (period === "PM" && hours !== 12) {
+                    hours += 12;
+                }
+
+                if (period === "AM" && hours === 12) {
+                    hours = 0;
+                }
+
+                return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+            }
+
+            if (/^\d{2}:\d{2}$/.test(input)) {
+                return `${input}:00`;
+            }
+
+            if (/^\d{2}:\d{2}:\d{2}$/.test(input)) {
+                return input;
+            }
+
+            return null;
+        }
+
+        const appointmentTime = convertTime(time);
+
+        if (!appointmentTime) {
+            return res.status(400).json({
+                message: "Invalid appointment time."
+            });
+        }
+
+        // GET SELECTED SERVICE INFORMATION
+        let serviceName = String(service).trim();
+        let servicePrice = Number(price);
         let selectedServiceId = null;
 
-        if (serviceId !== undefined && serviceId !== null && serviceId !== "") {
+        if (
+            serviceId !== undefined &&
+            serviceId !== null &&
+            serviceId !== ""
+        ) {
             const [services] = await db.query(
                 "SELECT * FROM services WHERE id = ?",
                 [serviceId]
@@ -281,34 +406,64 @@ async function createAppointment(req, res) {
 
             if (services.length === 0) {
                 return res.status(400).json({
-                    message: "The selected service does not exist."
+                    message: "Selected dental service does not exist."
                 });
             }
 
-            selectedServiceId = services[0].id;
-            serviceName = services[0].name;
-            servicePrice = Number(services[0].price);
+            const selectedService = services[0];
+
+            selectedServiceId = selectedService.id;
+
+            serviceName =
+                selectedService.service_name ||
+                selectedService.name ||
+                serviceName;
+
+            servicePrice = Number(selectedService.price);
         }
 
+        if (
+            !Number.isFinite(servicePrice) ||
+            servicePrice < 0
+        ) {
+            return res.status(400).json({
+                message: "Invalid dental service price."
+            });
+        }
+
+        // INSERT APPOINTMENT
+        // IMPORTANT:
+        // MySQL columns are appointment_date and appointment_time.
+        // Do not change these to date or time.
+
         const [result] = await db.query(
-            `INSERT INTO appointments
-            (patient_id, patient_name, service, service_id, price,
-             dentist, date, time, notes, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO appointments (
+                patient_id,
+                service_id,
+                patient_name,
+                service,
+                price,
+                dentist,
+                appointment_date,
+                appointment_time,
+                status,
+                notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 String(patientId),
+                selectedServiceId,
                 String(patientName || ""),
                 serviceName,
-                selectedServiceId,
                 servicePrice,
                 String(dentist),
                 String(date),
-                String(time),
-                String(notes || ""),
-                "Pending"
+                appointmentTime,
+                "Pending",
+                String(notes || "")
             ]
         );
 
+        // GET NEWLY CREATED APPOINTMENT
         const [rows] = await db.query(
             "SELECT * FROM appointments WHERE id = ?",
             [result.insertId]
@@ -316,130 +471,498 @@ async function createAppointment(req, res) {
 
         logBlock("NEW APPOINTMENT CREATED", rows[0]);
 
-        res.status(201).json({
+        return res.status(201).json({
             message: "Appointment created successfully.",
             appointment: rows[0]
         });
+
     } catch (error) {
-        console.error("Create appointment error:", error.message);
-        res.status(500).json({ message: "Failed to create appointment." });
+        console.error(
+            "Create appointment error:",
+            error.message
+        );
+
+        return res.status(500).json({
+            message: "Failed to create appointment.",
+            error: error.message
+        });
     }
 }
 
-app.post("/api/appointment", createAppointment);
-app.post("/api/appointments", createAppointment);
-
+// ==================================================
 // UPDATE APPOINTMENT STATUS
+// ==================================================
+
 async function updateAppointmentStatus(req, res) {
     try {
+        const { id } = req.params;
         const { status } = req.body;
-        const id = req.params.id;
-        const allowed = ["Pending", "Confirmed", "Completed", "Cancelled"];
 
-        if (!allowed.includes(status)) {
+        const allowedStatuses = [
+            "Pending",
+            "Confirmed",
+            "Completed",
+            "Cancelled"
+        ];
+
+        if (!allowedStatuses.includes(status)) {
             return res.status(400).json({
+                success: false,
                 message: "Invalid appointment status."
             });
         }
 
-        const [existing] = await db.query(
-            "SELECT * FROM appointments WHERE id = ?",
-            [id]
+        const [result] = await db.query(
+            "UPDATE appointments SET status = ? WHERE id = ?",
+            [status, id]
         );
 
-        if (existing.length === 0) {
+        if (result.affectedRows === 0) {
             return res.status(404).json({
+                success: false,
                 message: "Appointment not found."
             });
         }
 
-        if (
-            existing[0].status === "Completed" ||
-            existing[0].status === "Cancelled"
-        ) {
-            return res.status(400).json({
-                message: "This appointment can no longer be updated."
-            });
-        }
+        res.json({
+            success: true,
+            message: "Appointment status updated successfully."
+        });
 
-        if (existing[0].status !== status) {
-            await db.query(
-                "UPDATE appointments SET status = ? WHERE id = ?",
-                [status, id]
-            );
-
-            logBlock("APPOINTMENT STATUS UPDATED", {
-                id,
-                status
-            });
-        }
-
-        const [updated] = await db.query(
-            "SELECT * FROM appointments WHERE id = ?",
-            [id]
+    } catch (error) {
+        console.error(
+            "Update appointment status error:",
+            error.message
         );
 
-        res.json({
-            message: "Appointment status updated successfully.",
-            appointment: updated[0]
-        });
-    } catch (error) {
-        console.error("Update appointment error:", error.message);
         res.status(500).json({
-            message: "Failed to update appointment status."
+            success: false,
+            message: "Failed to update appointment status.",
+            error: error.message
         });
     }
 }
 
-app.put("/api/appointment/:id/status", updateAppointmentStatus);
-app.put("/api/appointments/:id/status", updateAppointmentStatus);
+// ==================================================
+// APPOINTMENT ROUTES
+// ==================================================
+
+// GET ALL APPOINTMENTS
+app.get("/api/patient_appoint", async (req, res) => {
+    try {
+        const [appointments] = await db.query(
+            `SELECT * FROM appointments
+             ORDER BY appointment_date DESC,
+             appointment_time DESC`
+        );
+
+        res.json(appointments);
+
+    } catch (error) {
+        console.error(
+            "Get appointments error:",
+            error.message
+        );
+
+        res.status(500).json({
+            message: "Failed to retrieve appointments.",
+            error: error.message
+        });
+    }
+});
+
+// CREATE APPOINTMENT
+app.post("/api/patient_appoint", createAppointment);
+
+// SINGULAR ROUTE FOR COMPATIBILITY
+app.post("/api/patient_appointment", createAppointment);
+
+// UPDATE APPOINTMENT STATUS
+app.put(
+    "/api/patient_appointment/:id/status",
+    updateAppointmentStatus
+);
+
+app.put(
+    "/api/patient_appointments/:id/status",
+    updateAppointmentStatus
+);
+
 
 // ==================================================
-// PATIENTS
-// MySQL table: patients
+// DENTIST APPOINTMENT ROUTES — MYSQL
 // ==================================================
+
+// GET ALL APPOINTMENTS FOR DENTIST DASHBOARD
+app.get("/api/dentist_appoint", async (req, res) => {
+    try {
+        const [appointments] = await db.query(
+            `SELECT
+                id,
+                patient_id,
+                patient_name,
+                service_id,
+                service,
+                price,
+                dentist,
+                appointment_date,
+                appointment_time,
+                status,
+                notes
+             FROM appointments
+             ORDER BY appointment_date DESC, appointment_time DESC`
+        );
+
+        console.log("Dentist appointments retrieved:", appointments.length);
+
+        res.json(appointments);
+
+    } catch (error) {
+        console.error("Get dentist appointments error:", error.message);
+
+        res.status(500).json({
+            message: "Failed to retrieve dentist appointments.",
+            error: error.message
+        });
+    }
+});
+
+// CREATE APPOINTMENT
+app.post("/api/dentist_appoint", createAppointment);
+
+// UPDATE APPOINTMENT STATUS
+app.put(
+    "/api/dentist_appoint/:id/status",
+    updateAppointmentStatus
+);
+
+
+// ==================================================
+// PATIENTS — MYSQL COLUMN-AWARE ROUTES
+// ==================================================
+
+let patientColumnsCache = null;
+
+async function getPatientColumns() {
+    if (patientColumnsCache) {
+        return patientColumnsCache;
+    }
+
+    const [columns] = await db.query(
+        "SHOW COLUMNS FROM patients"
+    );
+
+    patientColumnsCache = columns.map(column => column.Field);
+
+    return patientColumnsCache;
+}
+
+function findPatientColumn(columns, possibleNames) {
+    return possibleNames.find(name => columns.includes(name)) || null;
+}
+
+function formatPatientDate(value) {
+    if (!value) return "";
+
+    if (value instanceof Date) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    return String(value).slice(0, 10);
+}
+
+function formatPatient(patient, columns) {
+    const firstNameColumn = findPatientColumn(
+        columns,
+        ["first_name", "firstName"]
+    );
+
+    const lastNameColumn = findPatientColumn(
+        columns,
+        ["last_name", "lastName"]
+    );
+
+    const nameColumn = findPatientColumn(
+        columns,
+        ["name", "full_name", "patient_name"]
+    );
+
+    const firstName = firstNameColumn
+        ? patient[firstNameColumn] || ""
+        : "";
+
+    const lastName = lastNameColumn
+        ? patient[lastNameColumn] || ""
+        : "";
+
+    const fullName =
+        nameColumn && patient[nameColumn]
+            ? patient[nameColumn]
+            : `${firstName} ${lastName}`.trim();
+
+    const patientCodeColumn = findPatientColumn(
+        columns,
+        ["patient_id", "patient_code"]
+    );
+
+    const phoneColumn = findPatientColumn(
+        columns,
+        ["phone", "contact", "phone_number"]
+    );
+
+    const birthdateColumn = findPatientColumn(
+        columns,
+        ["birthdate", "birth_date", "date_of_birth"]
+    );
+
+    const serviceColumn = findPatientColumn(
+        columns,
+        ["service", "last_service", "service_name"]
+    );
+
+    const statusColumn = findPatientColumn(
+        columns,
+        ["status", "dental_status"]
+    );
+
+    const nextVisitColumn = findPatientColumn(
+        columns,
+        ["next_visit", "nextVisit"]
+    );
+
+    const lastVisitColumn = findPatientColumn(
+        columns,
+        ["last_visit", "lastVisit"]
+    );
+
+    const historyColumn = findPatientColumn(
+        columns,
+        ["history", "dental_history"]
+    );
+
+    const notesColumn = findPatientColumn(
+        columns,
+        ["notes", "dentist_notes"]
+    );
+
+    let history = [];
+
+    if (historyColumn && patient[historyColumn]) {
+        try {
+            history = typeof patient[historyColumn] === "string"
+                ? JSON.parse(patient[historyColumn])
+                : patient[historyColumn];
+
+            if (!Array.isArray(history)) {
+                history = [];
+            }
+        } catch {
+            history = [];
+        }
+    }
+
+    return {
+        id: patient.id,
+        patientCode: patientCodeColumn
+            ? patient[patientCodeColumn]
+            : patient.id,
+        name: fullName || "Unnamed Patient",
+        email: patient.email || "",
+        phone: phoneColumn
+            ? patient[phoneColumn] || ""
+            : "",
+        birthdate: birthdateColumn
+            ? formatPatientDate(patient[birthdateColumn])
+            : "",
+        service: serviceColumn
+            ? patient[serviceColumn] || ""
+            : "",
+        status: statusColumn
+            ? patient[statusColumn] || ""
+            : "",
+        nextVisit: nextVisitColumn
+            ? formatPatientDate(patient[nextVisitColumn])
+            : "",
+        lastVisit: lastVisitColumn
+            ? formatPatientDate(patient[lastVisitColumn])
+            : "",
+        history,
+        notes: notesColumn
+            ? patient[notesColumn] || ""
+            : "",
+        avatar: fullName
+            ? fullName.charAt(0).toUpperCase()
+            : "P"
+    };
+}
+
+// REGISTER PATIENT IN MYSQL
+app.post("/api/patients", async (req, res) => {
+    try {
+        const firstName = String(req.body.firstName || "").trim();
+        const lastName = String(req.body.lastName || "").trim();
+        const email = String(req.body.email || "").trim().toLowerCase();
+        const phone = String(req.body.phone || "").trim();
+
+        if (!firstName || !lastName || !email) {
+            return res.status(400).json({
+                message: "First name, last name, and email are required."
+            });
+        }
+
+        // Prevent duplicate patient accounts
+        const [existing] = await db.query(
+            "SELECT * FROM patients WHERE email = ? LIMIT 1",
+            [email]
+        );
+
+        if (existing.length > 0) {
+            const columns = await getPatientColumns();
+
+            return res.status(409).json({
+                message: "A patient with this email already exists.",
+                patient: formatPatient(existing[0], columns)
+            });
+        }
+
+        // Generate a unique patient code
+        const patientCode = `P-${Date.now()}`;
+
+        const [result] = await db.query(
+            `INSERT INTO patients
+                (patient_id, first_name, last_name, email, phone, status)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                patientCode,
+                firstName,
+                lastName,
+                email,
+                phone,
+                "Active"
+            ]
+        );
+
+        const [rows] = await db.query(
+            "SELECT * FROM patients WHERE id = ?",
+            [result.insertId]
+        );
+
+        const columns = await getPatientColumns();
+        const patient = formatPatient(rows[0], columns);
+
+        logBlock("PATIENT REGISTERED IN MYSQL", patient);
+
+        return res.status(201).json({
+            message: "Patient registered successfully.",
+            patient
+        });
+
+    } catch (error) {
+        console.error("Register patient error:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to register patient.",
+            error: error.message
+        });
+    }
+});
+
+// GET PATIENT BY EMAIL
+app.get("/api/patients/by-email/:email", async (req, res) => {
+    try {
+        const email = decodeURIComponent(req.params.email);
+
+        const [rows] = await db.query(
+            "SELECT * FROM patients WHERE email = ? LIMIT 1",
+            [email]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                message: "Patient record not found. Please register first."
+            });
+        }
+
+        const columns = await getPatientColumns();
+        const patient = formatPatient(rows[0], columns);
+
+        res.json({ patient });
+
+    } catch (error) {
+        console.error("Find patient by email error:", error);
+
+        res.status(500).json({
+            message: "Failed to find patient."
+        });
+    }
+});
 
 // GET ALL PATIENTS
 app.get("/api/patients", async (req, res) => {
     try {
+        const columns = await getPatientColumns();
+
+        if (!columns.includes("id")) {
+            return res.status(500).json({
+                message: "The patients table must have an id column."
+            });
+        }
+
         const [patients] = await db.query(
-            "SELECT * FROM patients ORDER BY id"
+            "SELECT * FROM patients ORDER BY id DESC"
         );
 
-        res.json(patients);
+        res.json(
+            patients.map(patient =>
+                formatPatient(patient, columns)
+            )
+        );
+
     } catch (error) {
         console.error("Get patients error:", error.message);
-        res.status(500).json({ message: "Failed to retrieve patients." });
+
+        res.status(500).json({
+            message: "Failed to retrieve patients.",
+            error: error.message
+        });
     }
 });
 
 // GET ONE PATIENT
 app.get("/api/patients/:id", async (req, res) => {
     try {
+        const columns = await getPatientColumns();
+
         const [patients] = await db.query(
             "SELECT * FROM patients WHERE id = ?",
             [req.params.id]
         );
 
         if (patients.length === 0) {
-            return res.status(404).json({ message: "Patient not found." });
+            return res.status(404).json({
+                message: "Patient not found."
+            });
         }
 
-        res.json(patients[0]);
+        res.json(
+            formatPatient(patients[0], columns)
+        );
+
     } catch (error) {
         console.error("Get patient error:", error.message);
-        res.status(500).json({ message: "Failed to retrieve patient." });
+
+        res.status(500).json({
+            message: "Failed to retrieve patient.",
+            error: error.message
+        });
     }
 });
 
-// UPDATE PATIENT — log only changed fields
+// UPDATE PATIENT
 app.put("/api/patients/:id", async (req, res) => {
     try {
         const id = req.params.id;
-        const fields = [
-            "firstName", "lastName", "name", "age", "gender",
-            "contact", "email", "address", "notes"
-        ];
+        const columns = await getPatientColumns();
 
         const [existing] = await db.query(
             "SELECT * FROM patients WHERE id = ?",
@@ -447,74 +970,132 @@ app.put("/api/patients/:id", async (req, res) => {
         );
 
         if (existing.length === 0) {
-            return res.status(404).json({ message: "Patient not found." });
+            return res.status(404).json({
+                message: "Patient not found."
+            });
         }
 
         const patient = existing[0];
-        const changed = {};
         const updates = [];
         const values = [];
 
-        for (const field of fields) {
-            if (req.body[field] === undefined) continue;
+        function addUpdate(column, value) {
+            if (!column || !columns.includes(column)) {
+                return;
+            }
 
-            const newValue = req.body[field];
-
-            if (String(newValue ?? "") !== String(patient[field] ?? "")) {
-                updates.push(`\`${field}\` = ?`);
-                values.push(newValue ?? "");
-                changed[field] = newValue ?? "";
+            if (
+                String(patient[column] ?? "") !==
+                String(value ?? "")
+            ) {
+                updates.push(`\`${column}\` = ?`);
+                values.push(value === "" ? null : value);
             }
         }
 
-        if (
-            req.body.firstName !== undefined ||
-            req.body.lastName !== undefined
-        ) {
-            const firstName = req.body.firstName ?? patient.firstName ?? "";
-            const lastName = req.body.lastName ?? patient.lastName ?? "";
-            const fullName = `${firstName} ${lastName}`.trim();
+        // Full name
+        if (req.body.name !== undefined) {
+            const fullName = String(req.body.name).trim();
 
-            if (fullName !== String(patient.name || "")) {
-                const nameIndex = updates.findIndex(item => item === "`name` = ?");
-
-                if (nameIndex >= 0) {
-                    values[nameIndex] = fullName;
-                } else {
-                    updates.push("`name` = ?");
-                    values.push(fullName);
-                }
-
-                changed.name = fullName;
-            }
-        }
-
-        if (updates.length > 0) {
-            values.push(id);
-
-            await db.query(
-                `UPDATE patients SET ${updates.join(", ")} WHERE id = ?`,
-                values
+            const nameColumn = findPatientColumn(
+                columns,
+                ["name", "full_name", "patient_name"]
             );
 
-            logBlock("PATIENT UPDATED — CHANGED FIELDS ONLY", {
-                id,
-                ...changed
+            if (nameColumn) {
+                addUpdate(nameColumn, fullName);
+            }
+
+            const firstNameColumn = findPatientColumn(
+                columns,
+                ["first_name", "firstName"]
+            );
+
+            const lastNameColumn = findPatientColumn(
+                columns,
+                ["last_name", "lastName"]
+            );
+
+            if (firstNameColumn || lastNameColumn) {
+                const nameParts = fullName.split(/\s+/);
+                const firstName = nameParts.shift() || "";
+                const lastName = nameParts.join(" ");
+
+                addUpdate(firstNameColumn, firstName);
+                addUpdate(lastNameColumn, lastName);
+            }
+        }
+
+        // Other editable fields
+        const fieldMappings = {
+            email: ["email"],
+            phone: ["phone", "contact", "phone_number"],
+            birthdate: ["birthdate", "birth_date", "date_of_birth"],
+            service: ["service", "last_service", "service_name"],
+            status: ["status", "dental_status"],
+            nextVisit: ["next_visit", "nextVisit"]
+        };
+
+        for (const [requestField, possibleColumns] of
+            Object.entries(fieldMappings)) {
+
+            if (req.body[requestField] === undefined) {
+                continue;
+            }
+
+            const column = findPatientColumn(
+                columns,
+                possibleColumns
+            );
+
+            if (column) {
+                addUpdate(
+                    column,
+                    req.body[requestField]
+                );
+            }
+        }
+
+        if (updates.length === 0) {
+            return res.json({
+                message: "No supported patient changes were detected.",
+                patient: formatPatient(patient, columns)
             });
         }
+
+        values.push(id);
+
+        await db.query(
+            `UPDATE patients
+             SET ${updates.join(", ")}
+             WHERE id = ?`,
+            values
+        );
 
         const [updated] = await db.query(
             "SELECT * FROM patients WHERE id = ?",
             [id]
         );
 
+        const formattedPatient = formatPatient(
+            updated[0],
+            columns
+        );
+
+        logBlock("PATIENT UPDATED", formattedPatient);
+
         res.json({
             message: "Patient updated successfully.",
-            patient: updated[0]
+            patient: formattedPatient
         });
+
     } catch (error) {
         console.error("Update patient error:", error.message);
-        res.status(500).json({ message: "Failed to update patient." });
+
+        res.status(500).json({
+            message: "Failed to update patient.",
+            error: error.message
+        });
     }
 });
 
@@ -522,7 +1103,20 @@ app.put("/api/patients/:id", async (req, res) => {
 app.put("/api/patients/:id/notes", async (req, res) => {
     try {
         const id = req.params.id;
-        const notes = String(req.body.notes || "");
+        const columns = await getPatientColumns();
+
+        const notesColumn = findPatientColumn(
+            columns,
+            ["notes", "dentist_notes"]
+        );
+
+        if (!notesColumn) {
+            return res.status(400).json({
+                message: "Your patients table does not have a notes column. Add a notes column in phpMyAdmin first."
+            });
+        }
+
+        const notes = String(req.body.notes ?? "");
 
         const [existing] = await db.query(
             "SELECT * FROM patients WHERE id = ?",
@@ -530,30 +1124,45 @@ app.put("/api/patients/:id/notes", async (req, res) => {
         );
 
         if (existing.length === 0) {
-            return res.status(404).json({ message: "Patient not found." });
+            return res.status(404).json({
+                message: "Patient not found."
+            });
         }
 
-        if (String(existing[0].notes || "") !== notes) {
-            await db.query(
-                "UPDATE patients SET notes = ? WHERE id = ?",
-                [notes, id]
-            );
-
-            logBlock("PATIENT NOTES UPDATED", { id, notes });
-        }
+        await db.query(
+            `UPDATE patients
+             SET \`${notesColumn}\` = ?
+             WHERE id = ?`,
+            [notes, id]
+        );
 
         const [updated] = await db.query(
             "SELECT * FROM patients WHERE id = ?",
             [id]
         );
 
+        const formattedPatient = formatPatient(
+            updated[0],
+            columns
+        );
+
+        logBlock("PATIENT NOTES UPDATED", {
+            id,
+            notes
+        });
+
         res.json({
             message: "Patient notes updated successfully.",
-            patient: updated[0]
+            patient: formattedPatient
         });
+
     } catch (error) {
         console.error("Update patient notes error:", error.message);
-        res.status(500).json({ message: "Failed to update patient notes." });
+
+        res.status(500).json({
+            message: "Failed to update patient notes.",
+            error: error.message
+        });
     }
 });
 
@@ -561,6 +1170,7 @@ app.put("/api/patients/:id/notes", async (req, res) => {
 app.delete("/api/patients/:id", async (req, res) => {
     try {
         const id = req.params.id;
+        const columns = await getPatientColumns();
 
         const [existing] = await db.query(
             "SELECT * FROM patients WHERE id = ?",
@@ -568,7 +1178,9 @@ app.delete("/api/patients/:id", async (req, res) => {
         );
 
         if (existing.length === 0) {
-            return res.status(404).json({ message: "Patient not found." });
+            return res.status(404).json({
+                message: "Patient not found."
+            });
         }
 
         await db.query(
@@ -576,24 +1188,42 @@ app.delete("/api/patients/:id", async (req, res) => {
             [id]
         );
 
-        logBlock("PATIENT DELETED", existing[0]);
+        const deletedPatient = formatPatient(
+            existing[0],
+            columns
+        );
+
+        logBlock("PATIENT DELETED", deletedPatient);
 
         res.json({
             message: "Patient deleted successfully.",
-            patient: existing[0]
+            patient: deletedPatient
         });
+
     } catch (error) {
         console.error("Delete patient error:", error.message);
-        res.status(500).json({ message: "Failed to delete patient." });
+
+        res.status(500).json({
+            message: "Failed to delete patient. The patient may be linked to an appointment.",
+            error: error.message
+        });
     }
 });
 
-// START SERVER
-app.listen(PORT, () => {
-    console.log("\n========================================");
-    console.log(`DentalCare API running at http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+    console.log("========================================");
+    console.log("API URL: https://dental-system-rzqb.onrender.com");
     console.log("Services:     /api/services");
-    console.log("Appointments: /api/appointments");
+    console.log("Appointments: /api/patient_appoint");
+    console.log("Dentist:      /api/dentist_appoint");
     console.log("Patients:     /api/patients");
-    console.log("========================================\n");
+    console.log("========================================");
+});
+// ==================================================
+// HOME
+// ==================================================
+
+app.get("/", (req, res) => {
+    res.send("DentalCare API is running.");
+    
 });

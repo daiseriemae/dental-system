@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
-const BASE_URL =
-    import.meta.env.VITE_API_URL ||
-    "https://dental-system-rzqb.onrender.com";
 
-const API_URL = `${BASE_URL.replace(/\/+$/, "")}/api/patients`;
+const BASE_URL = "https://dental-system-rzqb.onrender.com";
+const API_URL = `${BASE_URL}/api/patients`;
 
 export default function DentistPatientRecord() {
     const [patients, setPatients] = useState([]);
@@ -438,21 +436,21 @@ export default function DentistPatientRecord() {
     // SEARCH
     // ==========================================
 
-    function getFilteredPatients() {
-        const searchText = search
-            .toLowerCase()
-            .trim();
+ function getFilteredPatients() {
+    const searchText = search.toLowerCase().trim();
 
-        return patients.filter(
-            (patient) =>
-                (patient.name || "")
-                    .toLowerCase()
-                    .includes(searchText) ||
-                (patient.id || "")
-                    .toLowerCase()
-                    .includes(searchText)
+    return patients.filter((patient) => {
+        const patientName = String(patient.name || "").toLowerCase();
+        const patientID = String(
+            patient.patientCode ?? patient.id ?? ""
+        ).toLowerCase();
+
+        return (
+            patientName.includes(searchText) ||
+            patientID.includes(searchText)
         );
-    }
+    });
+}
 
     return (
         <>
@@ -1257,7 +1255,7 @@ export default function DentistPatientRecord() {
                     </div>
 
                     <div className="dentist-info">
-                        👩‍⚕️ Dr. Maria Santos
+                         Dr. Jhulance Fernandez
                     </div>
 
                 </div>

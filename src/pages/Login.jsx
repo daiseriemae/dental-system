@@ -1,8 +1,8 @@
+
 import { useState } from "react";
+
 import {
-    signInWithPopup,
-    signInWithRedirect,
-    getRedirectResult
+    signInWithPopup
 } from "firebase/auth";
 
 import {
@@ -28,125 +28,118 @@ export default function Login() {
     const [message, setMessage] = useState("");
     const [messageType, setMessageType] = useState("danger");
 
-    const goToDashboard = async (currentUser) => {
-        console.log("Google user:", currentUser.email);
-        console.log("UID:", currentUser.uid);
+    // ==========================================
+    // SAVE REGISTERED USER INFORMATION
+    // ==========================================
 
-        const userRef = doc(
-            db,
-            "users",
-            currentUser.uid
+    const saveUserInformation = (userData, currentUser) => {
+        const firstName =
+            userData.firstName ||
+            currentUser.displayName?.trim().split(/\s+/)[0] ||
+            "";
+
+        const lastName =
+            userData.lastName ||
+            currentUser.displayName?.trim().split(/\s+/).slice(1).join(" ") ||
+            "";
+
+        const userEmail =
+            userData.email ||
+            currentUser.email ||
+            "";
+
+        const userRole =
+            userData.role === "dentist"
+                ? "dentist"
+                : "patient";
+
+        localStorage.setItem("userFirstName", firstName);
+        localStorage.setItem("userLastName", lastName);
+        localStorage.setItem("userEmail", userEmail);
+        localStorage.setItem("userRole", userRole);
+
+        localStorage.setItem(
+            "userPhoto",
+            userData.photoURL ||
+            currentUser.photoURL ||
+            ""
         );
 
-        let userRole = "patient";
+        localStorage.setItem("isLoggedIn", "true");
 
+        return userRole;
+    };
+
+    // ==========================================
+    // REDIRECT USER TO CORRECT DASHBOARD
+    // ==========================================
+
+    const redirectToDashboard = (role) => {
+        if (role === "dentist") {
+            window.location.href = "/dentist/dashboard";
+        } else {
+            window.location.href = "/patient/dashboard";
+        }
+    };
+
+    // ==========================================
+    // GOOGLE LOGIN
+    // ==========================================
+
+    const goToDashboard = async (currentUser) => {
         try {
+            console.log("Google user:", currentUser.email);
+            console.log("UID:", currentUser.uid);
+
+            const userRef = doc(
+                db,
+                "users",
+                currentUser.uid
+            );
+
             const userSnap = await getDoc(userRef);
 
+            let userData = {};
+
             if (userSnap.exists()) {
-                const userData = userSnap.data();
+                userData = userSnap.data();
 
-                console.log(
-                    "Firestore user data:",
-                    userData
-                );
+                console.log("Firestore user data:", userData);
 
-                if (
-                    userData.role === "patient" ||
-                    userData.role === "dentist"
-                ) {
-                    userRole = userData.role;
-                }
             } else {
                 const displayName =
                     currentUser.displayName || "";
 
                 const nameParts =
-                    displayName
-                        .trim()
-                        .split(/\s+/);
+                    displayName.trim().split(/\s+/);
 
-                const firstName =
-                    nameParts[0] || "";
+                userData = {
+                    uid: currentUser.uid,
+                    email: currentUser.email || "",
+                    displayName,
+                    firstName: nameParts[0] || "",
+                    lastName: nameParts.slice(1).join(" "),
+                    photoURL: currentUser.photoURL || "",
+                    role: "patient",
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                };
 
-                const lastName =
-                    nameParts
-                        .slice(1)
-                        .join(" ");
+                await setDoc(userRef, userData);
 
-                await setDoc(
-                    userRef,
-                    {
-                        uid: currentUser.uid,
-                        email:
-                            currentUser.email || "",
-                        displayName:
-                            currentUser.displayName || "",
-                        firstName,
-                        lastName,
-                        photoURL:
-                            currentUser.photoURL || "",
-                        role: "patient",
-                        createdAt:
-                            serverTimestamp(),
-                        updatedAt:
-                            serverTimestamp()
-                    }
-                );
-
-                userRole = "patient";
+                userData.role = "patient";
             }
 
-            localStorage.setItem(
-                "userEmail",
-                currentUser.email || ""
+            const userRole = saveUserInformation(
+                userData,
+                currentUser
             );
 
-            localStorage.setItem(
-                "userFirstName",
-                currentUser.displayName
-                    ? currentUser.displayName
-                          .split(" ")[0]
-                    : ""
-            );
+            console.log("Registered first name:", userData.firstName);
+            console.log("Registered last name:", userData.lastName);
+            console.log("User role:", userRole);
 
-            localStorage.setItem(
-                "userLastName",
-                currentUser.displayName
-                    ? currentUser.displayName
-                          .split(" ")
-                          .slice(1)
-                          .join(" ")
-                    : ""
-            );
-
-            localStorage.setItem(
-                "userPhoto",
-                currentUser.photoURL || ""
-            );
-
-            localStorage.setItem(
-                "userRole",
-                userRole
-            );
-
-            localStorage.setItem(
-                "isLoggedIn",
-                "true"
-            );
-
-            console.log(
-                "User role:",
-                userRole
-            );
-
-            if (userRole === "dentist") {
-                window.location.href =
-                    "/dentist/dashboard";
-            } else {
-                window.location.href =
-                    "/patient/dashboard";
-            }
+            redirectToDashboard(userRole);
 
         } catch (error) {
             console.error(
@@ -162,64 +155,43 @@ export default function Login() {
         }
     };
 
-    localStorage.setItem('userEmail', email);
-    localStorage.setItem('userRole', 'patient');
-
-    fetch('http://localhost:8080/api/localstorage', {
-    method: 'POST',
-     headers: {
-    'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-    userEmail: localStorage.getItem('userEmail'),
-    userRole: localStorage.getItem('userRole')
-    })
-    });
+    // ==========================================
+    // EMAIL AND PASSWORD LOGIN
+    // ==========================================
 
     const handlePatientLogin = (event) => {
         event.preventDefault();
 
         setMessage("");
 
-        const cleanEmail =
-            email.trim();
+        const cleanEmail = email.trim();
 
         if (!cleanEmail) {
-            setMessage(
-                "Please enter your email."
-            );
-
+            setMessage("Please enter your email.");
             setMessageType("danger");
             return;
         }
 
         if (!password) {
-            setMessage(
-                "Please enter your password."
-            );
-
+            setMessage("Please enter your password.");
             setMessageType("danger");
             return;
         }
 
-        localStorage.setItem(
-            "userEmail",
-            cleanEmail
+        // This form currently does not authenticate
+        // against Firebase or another password service.
+        // Do not mark the user as authenticated here.
+
+        setMessage(
+            "Email and password authentication is not connected yet. Please use Continue with Google or connect your existing authentication method."
         );
 
-        localStorage.setItem(
-            "userRole",
-            "patient"
-        );
-
-        localStorage.setItem(
-            "isLoggedIn",
-            "true"
-        );
-
-        window.location.href =
-            "/patient/dashboard";
+        setMessageType("warning");
     };
+
+    // ==========================================
+    // CANCEL
+    // ==========================================
 
     const handleCancel = () => {
         setEmail("");
@@ -227,101 +199,64 @@ export default function Login() {
         setMessage("");
     };
 
+    // ==========================================
+    // GOOGLE LOGIN BUTTON
+    // ==========================================
+
     const handleGoogleLogin = async () => {
         try {
             setGoogleLoading(true);
             setMessage("");
 
-            console.log(
-                "Starting Google login..."
+            console.log("Starting Google login...");
+
+            const result = await signInWithPopup(
+                auth,
+                googleProvider
             );
 
-            const result =
-                await signInWithPopup(
-                    auth,
-                    googleProvider
-                );
+            console.log("Google login successful.");
 
-            console.log(
-                "Google login successful."
-            );
-
-            const currentUser =
-                result.user;
-
-            await goToDashboard(
-                currentUser
-            );
+            await goToDashboard(result.user);
 
         } catch (error) {
-            console.error(
-                "Google login failed:",
-                error
-            );
+            console.error("Google login failed:", error);
 
             let errorMessage =
                 "Google login failed. Please try again.";
 
-            if (
-                error.code ===
-                "auth/popup-closed-by-user"
-            ) {
-                errorMessage =
-                    "Google login was cancelled.";
-            }
+            if (error.code === "auth/popup-closed-by-user") {
+                errorMessage = "Google login was cancelled.";
 
-            else if (
-                error.code ===
-                "auth/popup-blocked"
-            ) {
+            } else if (error.code === "auth/popup-blocked") {
                 errorMessage =
                     "Google login popup was blocked. Please allow popups for this site.";
-            }
 
-            else if (
-                error.code ===
-                "auth/unauthorized-domain"
-            ) {
+            } else if (error.code === "auth/unauthorized-domain") {
                 errorMessage =
-                    "This website is not authorized in Firebase. Add localhost to Firebase Authorized Domains.";
-            }
+                    "This website is not authorized in Firebase. Add your website to Firebase Authorized Domains.";
 
-            else if (
-                error.code ===
-                "auth/operation-not-allowed"
-            ) {
+            } else if (error.code === "auth/operation-not-allowed") {
                 errorMessage =
                     "Google Sign-In is not enabled in Firebase Authentication.";
-            }
 
-            else if (
-                error.code ===
-                "auth/network-request-failed"
-            ) {
+            } else if (error.code === "auth/network-request-failed") {
                 errorMessage =
-                    "Network error. Firebase could not connect. Check your internet connection.";
-            }
+                    "Network error. Check your internet connection.";
 
-            else if (
-                error.code ===
-                "permission-denied"
+            } else if (
+                error.code === "permission-denied" ||
+                error.code === "firestore/permission-denied"
             ) {
                 errorMessage =
                     "Firestore permission denied. Check your Firestore security rules.";
+
+            } else if (error.message) {
+                errorMessage = error.message;
             }
 
-            else if (error.message) {
-                errorMessage =
-                    error.message;
-            }
-
-            setMessage(
-                errorMessage
-            );
-
-            setMessageType(
-                "danger"
-            );
+            setMessage(errorMessage);
+            setMessageType("danger");
 
         } finally {
             setGoogleLoading(false);
@@ -370,12 +305,7 @@ export default function Login() {
 
                     box-shadow:
                         0 10px 30px
-                        rgba(
-                            123,
-                            97,
-                            168,
-                            0.18
-                        );
+                        rgba(123, 97, 168, 0.18);
                 }
 
                 .login-card::before {
@@ -389,12 +319,7 @@ export default function Login() {
                     border-radius: 50%;
 
                     background:
-                        rgba(
-                            155,
-                            123,
-                            184,
-                            0.12
-                        );
+                        rgba(155, 123, 184, 0.12);
 
                     top: -70px;
                     right: -45px;
@@ -411,12 +336,7 @@ export default function Login() {
                     border-radius: 50%;
 
                     background:
-                        rgba(
-                            169,
-                            139,
-                            196,
-                            0.10
-                        );
+                        rgba(169, 139, 196, 0.10);
 
                     bottom: -55px;
                     left: -40px;
@@ -439,12 +359,7 @@ export default function Login() {
 
                     box-shadow:
                         0 4px 12px
-                        rgba(
-                            123,
-                            97,
-                            168,
-                            0.15
-                        );
+                        rgba(123, 97, 168, 0.15);
                 }
 
                 .title {
@@ -466,19 +381,11 @@ export default function Login() {
                 .form-control {
                     height: 42px;
 
-                    border:
-                        1px solid
-                        #d8ccec;
+                    border: 1px solid #d8ccec;
 
                     border-radius: 10px;
 
-                    background-color:
-                        rgba(
-                            255,
-                            255,
-                            255,
-                            0.90
-                        );
+                    background-color: rgba(255,255,255,0.90);
 
                     font-size: 14px;
                 }
@@ -488,12 +395,7 @@ export default function Login() {
 
                     box-shadow:
                         0 0 0 0.15rem
-                        rgba(
-                            169,
-                            139,
-                            196,
-                            0.20
-                        );
+                        rgba(169,139,196,0.20);
                 }
 
                 .password-box {
@@ -510,8 +412,7 @@ export default function Login() {
                     right: 14px;
                     top: 50%;
 
-                    transform:
-                        translateY(20%);
+                    transform: translateY(20%);
 
                     color: #9b7bb8;
 
@@ -526,19 +427,12 @@ export default function Login() {
 
                 .btn-login {
                     background-color: #9b7bb8;
-
                     color: white;
-
                     border: none;
-
                     border-radius: 50px;
-
                     font-weight: 600;
-
                     height: 40px;
-
                     font-size: 14px;
-
                     transition: 0.2s;
                 }
 
@@ -549,17 +443,10 @@ export default function Login() {
 
                 .btn-cancel {
                     background-color: transparent;
-
                     color: #9b7bb8;
-
-                    border:
-                        1px solid
-                        #9b7bb8;
-
+                    border: 1px solid #9b7bb8;
                     border-radius: 50px;
-
                     height: 40px;
-
                     font-size: 14px;
                 }
 
@@ -570,29 +457,18 @@ export default function Login() {
 
                 .btn-google {
                     background-color: white;
-
                     color: #4a4452;
-
-                    border:
-                        1px solid
-                        #d8ccec;
-
+                    border: 1px solid #d8ccec;
                     border-radius: 50px;
-
                     height: 40px;
-
                     font-size: 14px;
-
                     font-weight: 600;
-
                     transition: 0.2s;
                 }
 
                 .btn-google:hover {
                     background-color: #f8f5ff;
-
                     border-color: #9b7bb8;
-
                     color: #80609e;
                 }
 
@@ -603,46 +479,36 @@ export default function Login() {
 
                 .register-link {
                     color: #80609e;
-
                     font-weight: bold;
-
                     text-decoration: none;
                 }
 
                 .register-link:hover {
                     color: #6d4f8e;
-
                     text-decoration: underline;
                 }
 
                 .login-message {
                     font-size: 13px;
-
                     padding: 8px;
-
                     border-radius: 8px;
-
                     margin-bottom: 10px;
                 }
 
                 @media (max-width: 576px) {
-
                     body {
                         padding: 5px;
                     }
 
                     .login-card {
                         max-width: 350px;
-
-                        padding:
-                            25px 20px !important;
+                        padding: 25px 20px !important;
                     }
 
                     .logo {
                         width: 60px;
                         height: 60px;
                     }
-
                 }
 
             `}</style>
@@ -650,19 +516,15 @@ export default function Login() {
             <div className="card login-card p-4">
 
                 <div className="text-center">
-
                     <img
                         src="/images.jfif"
                         alt="DentalCare Logo"
                         className="logo"
                     />
-
                 </div>
 
                 <div>
-
                     <div className="text-center mb-3">
-
                         <h1 className="title fs-5 mb-1">
                             Patient Login
                         </h1>
@@ -671,28 +533,19 @@ export default function Login() {
                             Login to book and manage your
                             dental appointments.
                         </p>
-
                     </div>
 
                     {message && (
                         <div
-                            className={
-                                `login-message alert alert-${messageType}`
-                            }
+                            className={`login-message alert alert-${messageType}`}
                             role="alert"
                         >
                             {message}
                         </div>
                     )}
 
-                    <form
-                        onSubmit={
-                            handlePatientLogin
-                        }
-                    >
-
+                    <form onSubmit={handlePatientLogin}>
                         <div className="mb-2">
-
                             <label
                                 htmlFor="patientEmail"
                                 className="form-label fw-semibold"
@@ -706,18 +559,14 @@ export default function Login() {
                                 className="form-control"
                                 placeholder="Enter your email"
                                 value={email}
-                                onChange={(event) =>
-                                    setEmail(
-                                        event.target.value
-                                    )
+                                onChange={event =>
+                                    setEmail(event.target.value)
                                 }
                                 required
                             />
-
                         </div>
 
                         <div className="mb-3 password-box">
-
                             <label
                                 htmlFor="patientPassword"
                                 className="form-label fw-semibold"
@@ -726,19 +575,13 @@ export default function Login() {
                             </label>
 
                             <input
-                                type={
-                                    showPassword
-                                        ? "text"
-                                        : "password"
-                                }
+                                type={showPassword ? "text" : "password"}
                                 id="patientPassword"
                                 className="form-control"
                                 placeholder="Enter your password"
                                 value={password}
-                                onChange={(event) =>
-                                    setPassword(
-                                        event.target.value
-                                    )
+                                onChange={event =>
+                                    setPassword(event.target.value)
                                 }
                                 required
                             />
@@ -750,16 +593,12 @@ export default function Login() {
                                         : "bi bi-eye-slash password-icon"
                                 }
                                 onClick={() =>
-                                    setShowPassword(
-                                        !showPassword
-                                    )
+                                    setShowPassword(!showPassword)
                                 }
                             ></i>
-
                         </div>
 
                         <div className="d-flex justify-content-center gap-2">
-
                             <button
                                 type="submit"
                                 className="btn btn-login px-4"
@@ -771,19 +610,14 @@ export default function Login() {
                             <button
                                 type="button"
                                 className="btn btn-cancel px-4"
-                                onClick={
-                                    handleCancel
-                                }
+                                onClick={handleCancel}
                             >
                                 Cancel
                             </button>
-
                         </div>
-
                     </form>
 
                     <div className="text-center my-3">
-
                         <div className="text-secondary small mb-2">
                             or
                         </div>
@@ -791,29 +625,20 @@ export default function Login() {
                         <button
                             type="button"
                             className="btn btn-google w-100"
-                            onClick={
-                                handleGoogleLogin
-                            }
-                            disabled={
-                                googleLoading
-                            }
+                            onClick={handleGoogleLogin}
+                            disabled={googleLoading}
                         >
-
                             <i className="bi bi-google me-2"></i>
 
                             {googleLoading
                                 ? "Signing in..."
                                 : "Continue with Google"
                             }
-
                         </button>
-
                     </div>
 
                     <div className="text-center mt-3">
-
                         <p className="text-secondary mb-0 small">
-
                             New patient?{" "}
 
                             <a
@@ -822,13 +647,9 @@ export default function Login() {
                             >
                                 Register
                             </a>
-
                         </p>
-
                     </div>
-
                 </div>
-
             </div>
         </>
     );

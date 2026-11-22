@@ -1,43 +1,7 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useState, useCallback } from "react";
 import Sidebar from "./Sidebar.jsx";
 
-const STORAGE_KEY = "dentalAppointments";
-
-const defaultAppointments = [
-    {
-        id: "1",
-        patientId: "P-00125",
-        patientName: "Daiserie Mae",
-        service: "Dental Cleaning",
-        dentist: "Dr. Maria Santos",
-        date: "2026-09-25",
-        time: "10:00 AM",
-        notes: "Regular dental cleaning.",
-        status: "Pending"
-    },
-    {
-        id: "2",
-        patientId: "P-00126",
-        patientName: "John Michael Cruz",
-        service: "Dental Check-up",
-        dentist: "Dr. Maria Santos",
-        date: "2026-09-25",
-        time: "11:30 AM",
-        notes: "General dental check-up.",
-        status: "Confirmed"
-    },
-    {
-        id: "3",
-        patientId: "P-00127",
-        patientName: "Angela Reyes",
-        service: "Tooth Extraction",
-        dentist: "Dr. Maria Santos",
-        date: "2026-09-26",
-        time: "9:00 AM",
-        notes: "Extraction consultation.",
-        status: "Completed"
-    }
-];
 
 export default function DentistAppointments() {
     const [appointments, setAppointments] = useState([]);
@@ -45,102 +9,195 @@ export default function DentistAppointments() {
     const [statusFilter, setStatusFilter] = useState("all");
     const [dateFilter, setDateFilter] = useState("");
     const [loading, setLoading] = useState(true);
+    const [updatingId, setUpdatingId] = useState(null);
+    const [dentistName, setDentistName] = useState(
+        getRegisteredDentistName
+    );
 
-    useEffect(() => {
-        loadAppointments();
-    }, []);
 
-    function loadAppointments() {
+const BASE_URL = "https://dental-system-rzqb.onrender.com";
+const API_URL = `${BASE_URL}/api/dentist_appoint`;
+
+
+function getRegisteredDentistName() {
+    const firstName = localStorage.getItem("userFirstName") || "";
+    const lastName = localStorage.getItem("userLastName") || "";
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    if (fullName) return fullName;
+
+    return (
+        localStorage.getItem("dentistName") ||
+        localStorage.getItem("userName") ||
+        localStorage.getItem("userEmail") ||
+        "Dentist"
+    );
+}
+
+    // ==========================================
+    // LOAD APPOINTMENTS FROM MYSQL
+    // ==========================================
+
+    const loadAppointments = useCallback(async () => {
         try {
-            const savedAppointments =
-                localStorage.getItem(STORAGE_KEY);
+            setLoading(true);
 
-            if (savedAppointments) {
-                setAppointments(
-                    JSON.parse(savedAppointments)
-                );
-            } else {
-                localStorage.setItem(
-                    STORAGE_KEY,
-                    JSON.stringify(defaultAppointments)
-                );
+            const response = await fetch(API_URL);
 
-                setAppointments(defaultAppointments);
+            if (!response.ok) {
+                throw new Error(
+                    `Server returned ${response.status}.`
+                );
             }
+
+            const data = await response.json();
+
+            if (!Array.isArray(data)) {
+                throw new Error("Invalid appointment data received.");
+            }
+
+            const formattedAppointments = data.map((item) => ({
+                id: String(item.id),
+
+                patientId:
+                    item.patient_id ??
+                    item.patientId ??
+                    "",
+
+                patientName:
+                    item.patient_name ??
+                    item.patientName ??
+                    item.patient ??
+                    "Unknown Patient",
+
+                service:
+                    item.service ??
+                    item.service_name ??
+                    "",
+
+                dentist:
+                    item.dentist ??
+                    item.dentist_name ??
+                    "",
+
+                date: String(
+                    item.appointment_date ??
+                    item.date ??
+                    ""
+                ).slice(0, 10),
+
+                time:
+                    item.appointment_time ??
+                    item.time ??
+                    "",
+
+                notes: item.notes ?? "",
+
+                status: item.status ?? "Pending"
+            }));
+
+            setAppointments(formattedAppointments);
+
         } catch (error) {
-            console.log(error);
-            setAppointments(defaultAppointments);
+            console.error("Load appointments error:", error);
+            setAppointments([]);
+
+            alert(
+                "Unable to load appointments. Check that XAMPP MySQL and your Express backend are running."
+            );
+
         } finally {
             setLoading(false);
         }
-    }
+    }, []);
 
-    function updateStatus(id, status) {
+    useEffect(() => {
+        loadAppointments();
+        setDentistName(getRegisteredDentistName());
+    }, [loadAppointments]);
+
+    // ==========================================
+    // UPDATE APPOINTMENT STATUS IN MYSQL
+    // ==========================================
+
+    async function updateStatus(id, status) {
         const appointment = appointments.find(
-            item => item.id === id
+            item => String(item.id) === String(id)
         );
 
-        if (!appointment) {
+        if (!appointment) return;
+
+        const messages = {
+            Confirmed: `Confirm appointment for ${appointment.patientName}?`,
+            Completed: `Mark ${appointment.patientName}'s appointment as completed?`,
+            Cancelled: `Cancel the appointment for ${appointment.patientName}?`
+        };
+
+        if (!window.confirm(messages[status] || "Update appointment status?")) {
             return;
         }
 
-        let message = "";
+        try {
+            setUpdatingId(String(id));
 
-        if (status === "Confirmed") {
-            message =
-                `Confirm appointment for ${appointment.patientName}?`;
-        }
-
-        if (status === "Completed") {
-            message =
-                `Mark ${appointment.patientName}'s appointment as completed?`;
-        }
-
-        if (status === "Cancelled") {
-            message =
-                `Cancel the appointment for ${appointment.patientName}?`;
-        }
-
-        if (!window.confirm(message)) {
-            return;
-        }
-
-        const updatedAppointments = appointments.map(item =>
-            item.id === id
-                ? {
-                    ...item,
-                    status
+            const response = await fetch(
+                `${API_URL}/${encodeURIComponent(id)}/status`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ status })
                 }
-                : item
-        );
+            );
 
-        setAppointments(updatedAppointments);
+            const result = await response.json();
 
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify(updatedAppointments)
-        );
+            if (!response.ok) {
+                throw new Error(
+                    result.message || "Failed to update appointment status."
+                );
+            }
 
-        alert(
-            status === "Confirmed"
-                ? `Appointment for ${appointment.patientName} has been confirmed.`
-                : status === "Completed"
-                ? "Appointment marked as completed."
-                : "Appointment has been cancelled."
-        );
+            await loadAppointments();
+
+            alert(
+                status === "Confirmed"
+                    ? `Appointment for ${appointment.patientName} has been confirmed.`
+                    : status === "Completed"
+                    ? "Appointment marked as completed."
+                    : "Appointment has been cancelled."
+            );
+
+        } catch (error) {
+            console.error("Update appointment status error:", error);
+            alert(error.message || "Unable to update appointment status.");
+
+        } finally {
+            setUpdatingId(null);
+        }
     }
+
+    // ==========================================
+    // VIEW APPOINTMENT DETAILS
+    // ==========================================
 
     function viewAppointment(appointment) {
         alert(
             `Patient: ${appointment.patientName}\n\n` +
-            `Patient ID: ${appointment.patientId}\n` +
-            `Service: ${appointment.service}\n` +
-            `Date: ${appointment.date}\n` +
-            `Time: ${appointment.time}\n` +
+            `Patient ID: ${appointment.patientId || "Not available"}\n` +
+            `Service: ${appointment.service || "—"}\n` +
+            `Dentist: ${appointment.dentist || dentistName}\n` +
+            `Date: ${formatDate(appointment.date)}\n` +
+            `Time: ${formatTime(appointment.time)}\n` +
             `Status: ${appointment.status}\n\n` +
             `Notes: ${appointment.notes || "No notes"}`
         );
     }
+
+    // ==========================================
+    // RESET FILTERS
+    // ==========================================
 
     function resetFilters() {
         setSearch("");
@@ -148,60 +205,74 @@ export default function DentistAppointments() {
         setDateFilter("");
     }
 
+    // ==========================================
+    // FILTER APPOINTMENTS
+    // ==========================================
+
     const filteredAppointments = appointments.filter(appointment => {
-        const patientName =
-            appointment.patientName ||
-            appointment.patient ||
-            "";
+        const patientName = String(
+            appointment.patientName || ""
+        ).toLowerCase();
+
+        const patientId = String(
+            appointment.patientId || ""
+        ).toLowerCase();
+
+        const searchText = search.toLowerCase().trim();
 
         const matchesSearch =
-            patientName
-                .toLowerCase()
-                .includes(search.toLowerCase());
+            patientName.includes(searchText) ||
+            patientId.includes(searchText);
 
         const matchesStatus =
             statusFilter === "all" ||
-            appointment.status.toLowerCase() ===
+            String(appointment.status || "").toLowerCase() ===
                 statusFilter.toLowerCase();
 
         const matchesDate =
             dateFilter === "" ||
             appointment.date === dateFilter;
 
-        return (
-            matchesSearch &&
-            matchesStatus &&
-            matchesDate
-        );
+        return matchesSearch && matchesStatus && matchesDate;
     });
+
+    // ==========================================
+    // SUMMARY COUNTS
+    // ==========================================
 
     const pendingCount = appointments.filter(
         appointment =>
-            appointment.status.toLowerCase() === "pending"
+            String(appointment.status).toLowerCase() === "pending"
     ).length;
 
     const confirmedCount = appointments.filter(
         appointment =>
-            appointment.status.toLowerCase() === "confirmed"
+            String(appointment.status).toLowerCase() === "confirmed"
     ).length;
 
     const completedCount = appointments.filter(
         appointment =>
-            appointment.status.toLowerCase() === "completed"
+            String(appointment.status).toLowerCase() === "completed"
     ).length;
 
-    const today = new Date()
-        .toISOString()
-        .split("T")[0];
+    const now = new Date();
+
+    const today = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0")
+    ].join("-");
 
     const todayCount = appointments.filter(
         appointment => appointment.date === today
     ).length;
 
+    // ==========================================
+    // FORMAT PATIENT INITIALS
+    // ==========================================
+
     function getInitials(name) {
-        if (!name) {
-            return "PT";
-        }
+        if (!name) return "PT";
 
         return name
             .split(" ")
@@ -212,23 +283,54 @@ export default function DentistAppointments() {
             .toUpperCase();
     }
 
+    // ==========================================
+    // FORMAT DATE
+    // ==========================================
+
     function formatDate(date) {
-        if (!date) {
-            return "";
-        }
+        if (!date) return "—";
 
         const dateObject = new Date(
-            `${date}T00:00:00`
+            `${String(date).slice(0, 10)}T00:00:00`
         );
 
-        return dateObject.toLocaleDateString(
-            "en-US",
-            {
-                year: "numeric",
-                month: "long",
-                day: "numeric"
-            }
+        if (Number.isNaN(dateObject.getTime())) {
+            return String(date);
+        }
+
+        return dateObject.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+        });
+    }
+
+    // ==========================================
+    // FORMAT TIME
+    // ==========================================
+
+    function formatTime(time) {
+        if (!time) return "—";
+
+        const value = String(time).trim();
+
+        const match = value.match(
+            /^(\d{1,2}):(\d{2})(?::\d{2})?$/
         );
+
+        if (match) {
+            const hours = Number(match[1]);
+            const minutes = match[2];
+
+            if (hours >= 0 && hours <= 23) {
+                const period = hours >= 12 ? "PM" : "AM";
+                const displayHour = hours % 12 || 12;
+
+                return `${displayHour}:${minutes} ${period}`;
+            }
+        }
+
+        return value;
     }
 
     return (
@@ -278,16 +380,6 @@ export default function DentistAppointments() {
                     font-weight: bold;
                 }
 
-                .offline-banner {
-                    background: #fff3cd;
-                    color: #856404;
-                    padding: 12px 15px;
-                    border-radius: 10px;
-                    margin-bottom: 20px;
-                    text-align: center;
-                    font-size: 14px;
-                }
-
                 .summary {
                     display: grid;
                     grid-template-columns: repeat(4, 1fr);
@@ -333,8 +425,7 @@ export default function DentistAppointments() {
                     gap: 12px;
                 }
 
-                input,
-                select {
+                input, select {
                     width: 100%;
                     padding: 11px 13px;
                     border: 1px solid #ddd;
@@ -344,8 +435,7 @@ export default function DentistAppointments() {
                     background: white;
                 }
 
-                input:focus,
-                select:focus {
+                input:focus, select:focus {
                     border-color: #9b7bb8;
                 }
 
@@ -424,6 +514,7 @@ export default function DentistAppointments() {
                     justify-content: center;
                     font-weight: bold;
                     font-size: 17px;
+                    flex-shrink: 0;
                 }
 
                 .patient-info h3 {
@@ -435,6 +526,7 @@ export default function DentistAppointments() {
                     color: #888;
                     font-size: 12px;
                     margin-top: 3px;
+                    overflow-wrap: anywhere;
                 }
 
                 .status {
@@ -483,12 +575,14 @@ export default function DentistAppointments() {
                 .detail-item strong {
                     font-size: 13px;
                     color: #555;
+                    overflow-wrap: anywhere;
                 }
 
                 .appointment-actions {
                     display: flex;
                     gap: 8px;
                     margin-top: 15px;
+                    flex-wrap: wrap;
                 }
 
                 .action-btn {
@@ -498,6 +592,11 @@ export default function DentistAppointments() {
                     cursor: pointer;
                     font-size: 12px;
                     font-weight: bold;
+                }
+
+                .action-btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
                 }
 
                 .confirm-btn {
@@ -520,7 +619,7 @@ export default function DentistAppointments() {
                     color: #604879;
                 }
 
-                .action-btn:hover {
+                .action-btn:hover:not(:disabled) {
                     opacity: 0.8;
                 }
 
@@ -647,7 +746,7 @@ export default function DentistAppointments() {
                     </div>
 
                     <div className="dentist-info">
-                        👩‍⚕️ Dr. Maria Santos
+                        👩‍⚕️ {dentistName}
                     </div>
                 </div>
 
@@ -679,46 +778,26 @@ export default function DentistAppointments() {
                     <div className="filters">
                         <input
                             type="text"
-                            placeholder="Search patient name..."
+                            placeholder="Search patient name or ID..."
                             value={search}
-                            onChange={(event) =>
-                                setSearch(event.target.value)
-                            }
+                            onChange={event => setSearch(event.target.value)}
                         />
 
                         <select
                             value={statusFilter}
-                            onChange={(event) =>
-                                setStatusFilter(event.target.value)
-                            }
+                            onChange={event => setStatusFilter(event.target.value)}
                         >
-                            <option value="all">
-                                All Status
-                            </option>
-
-                            <option value="pending">
-                                Pending
-                            </option>
-
-                            <option value="confirmed">
-                                Confirmed
-                            </option>
-
-                            <option value="completed">
-                                Completed
-                            </option>
-
-                            <option value="cancelled">
-                                Cancelled
-                            </option>
+                            <option value="all">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
                         </select>
 
                         <input
                             type="date"
                             value={dateFilter}
-                            onChange={(event) =>
-                                setDateFilter(event.target.value)
-                            }
+                            onChange={event => setDateFilter(event.target.value)}
                         />
 
                         <button
@@ -735,8 +814,7 @@ export default function DentistAppointments() {
                         <h2>Appointment List</h2>
 
                         <span className="appointment-count">
-                            {filteredAppointments.length}
-                            {" "}
+                            {filteredAppointments.length}{" "}
                             {filteredAppointments.length === 1
                                 ? "appointment"
                                 : "appointments"}
@@ -749,167 +827,144 @@ export default function DentistAppointments() {
                         </div>
                     ) : filteredAppointments.length === 0 ? (
                         <div className="no-results">
-                            <div style={{ fontSize: "35px" }}>
-                                🔍
-                            </div>
-
+                            <div style={{ fontSize: "35px" }}>🔍</div>
                             <p>No appointments found.</p>
-
                             <small>
                                 Try changing your search or filters.
                             </small>
                         </div>
                     ) : (
-                        filteredAppointments.map(
-                            appointment => {
-                                const patientName =
-                                    appointment.patientName ||
-                                    appointment.patient ||
-                                    "Unknown Patient";
+                        filteredAppointments.map(appointment => {
+                            const patientName =
+                                appointment.patientName || "Unknown Patient";
 
-                                const status =
-                                    appointment.status ||
-                                    "Pending";
+                            const status =
+                                appointment.status || "Pending";
 
-                                const statusClass =
-                                    status.toLowerCase();
+                            const statusClass = status.toLowerCase();
 
-                                return (
-                                    <div
-                                        className="appointment-card"
-                                        key={appointment.id}
-                                    >
-                                        <div className="appointment-top">
-                                            <div className="patient-info">
-                                                <div className="patient-avatar">
-                                                    {getInitials(
-                                                        patientName
-                                                    )}
-                                                </div>
+                            const isUpdating =
+                                updatingId === String(appointment.id);
 
-                                                <div>
-                                                    <h3>
-                                                        {patientName}
-                                                    </h3>
-
-                                                    <p>
-                                                        Patient ID:{" "}
-                                                        {
-                                                            appointment.patientId
-                                                        }
-                                                    </p>
-                                                </div>
+                            return (
+                                <div
+                                    className="appointment-card"
+                                    key={appointment.id}
+                                >
+                                    <div className="appointment-top">
+                                        <div className="patient-info">
+                                            <div className="patient-avatar">
+                                                {getInitials(patientName)}
                                             </div>
 
-                                            <span
-                                                className={`status ${statusClass}`}
-                                            >
-                                                {status}
-                                            </span>
-                                        </div>
-
-                                        <div className="appointment-details">
-                                            <div className="detail-item">
-                                                <span>DATE</span>
-
-                                                <strong>
-                                                    {formatDate(
-                                                        appointment.date
-                                                    )}
-                                                </strong>
-                                            </div>
-
-                                            <div className="detail-item">
-                                                <span>TIME</span>
-
-                                                <strong>
-                                                    {appointment.time}
-                                                </strong>
-                                            </div>
-
-                                            <div className="detail-item">
-                                                <span>SERVICE</span>
-
-                                                <strong>
-                                                    {appointment.service}
-                                                </strong>
+                                            <div>
+                                                <h3>{patientName}</h3>
+                                                <p>
+                                                    Patient ID:{" "}
+                                                    {appointment.patientId || "Not available"}
+                                                </p>
                                             </div>
                                         </div>
 
-                                        <div className="appointment-actions">
-                                            <button
-                                                className="action-btn view-btn"
-                                                onClick={() =>
-                                                    viewAppointment(
-                                                        appointment
-                                                    )
-                                                }
-                                            >
-                                                View
-                                            </button>
+                                        <span className={`status ${statusClass}`}>
+                                            {status}
+                                        </span>
+                                    </div>
 
-                                            {status.toLowerCase() ===
-                                                "pending" && (
-                                                <>
-                                                    <button
-                                                        className="action-btn confirm-btn"
-                                                        onClick={() =>
-                                                            updateStatus(
-                                                                appointment.id,
-                                                                "Confirmed"
-                                                            )
-                                                        }
-                                                    >
-                                                        Confirm
-                                                    </button>
+                                    <div className="appointment-details">
+                                        <div className="detail-item">
+                                            <span>DATE</span>
+                                            <strong>
+                                                {formatDate(appointment.date)}
+                                            </strong>
+                                        </div>
 
-                                                    <button
-                                                        className="action-btn cancel-btn"
-                                                        onClick={() =>
-                                                            updateStatus(
-                                                                appointment.id,
-                                                                "Cancelled"
-                                                            )
-                                                        }
-                                                    >
-                                                        Decline
-                                                    </button>
-                                                </>
-                                            )}
+                                        <div className="detail-item">
+                                            <span>TIME</span>
+                                            <strong>
+                                                {formatTime(appointment.time)}
+                                            </strong>
+                                        </div>
 
-                                            {status.toLowerCase() ===
-                                                "confirmed" && (
-                                                <>
-                                                    <button
-                                                        className="action-btn complete-btn"
-                                                        onClick={() =>
-                                                            updateStatus(
-                                                                appointment.id,
-                                                                "Completed"
-                                                            )
-                                                        }
-                                                    >
-                                                        Mark Completed
-                                                    </button>
-
-                                                    <button
-                                                        className="action-btn cancel-btn"
-                                                        onClick={() =>
-                                                            updateStatus(
-                                                                appointment.id,
-                                                                "Cancelled"
-                                                            )
-                                                        }
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                </>
-                                            )}
+                                        <div className="detail-item">
+                                            <span>SERVICE</span>
+                                            <strong>
+                                                {appointment.service || "—"}
+                                            </strong>
                                         </div>
                                     </div>
-                                );
-                            }
-                        )
+
+                                    <div className="appointment-actions">
+                                        <button
+                                            className="action-btn view-btn"
+                                            onClick={() => viewAppointment(appointment)}
+                                        >
+                                            View
+                                        </button>
+
+                                        {statusClass === "pending" && (
+                                            <>
+                                                <button
+                                                    className="action-btn confirm-btn"
+                                                    disabled={isUpdating}
+                                                    onClick={() =>
+                                                        updateStatus(
+                                                            appointment.id,
+                                                            "Confirmed"
+                                                        )
+                                                    }
+                                                >
+                                                    {isUpdating ? "Updating..." : "Confirm"}
+                                                </button>
+
+                                                <button
+                                                    className="action-btn cancel-btn"
+                                                    disabled={isUpdating}
+                                                    onClick={() =>
+                                                        updateStatus(
+                                                            appointment.id,
+                                                            "Cancelled"
+                                                        )
+                                                    }
+                                                >
+                                                    Decline
+                                                </button>
+                                            </>
+                                        )}
+
+                                        {statusClass === "confirmed" && (
+                                            <>
+                                                <button
+                                                    className="action-btn complete-btn"
+                                                    disabled={isUpdating}
+                                                    onClick={() =>
+                                                        updateStatus(
+                                                            appointment.id,
+                                                            "Completed"
+                                                        )
+                                                    }
+                                                >
+                                                    {isUpdating ? "Updating..." : "Mark Completed"}
+                                                </button>
+
+                                                <button
+                                                    className="action-btn cancel-btn"
+                                                    disabled={isUpdating}
+                                                    onClick={() =>
+                                                        updateStatus(
+                                                            appointment.id,
+                                                            "Cancelled"
+                                                        )
+                                                    }
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
                     )}
                 </section>
             </main>
