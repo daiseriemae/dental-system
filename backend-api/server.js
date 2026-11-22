@@ -12,7 +12,7 @@ const db = mysql.createPool({
     port: Number(process.env.DB_PORT || 4000),
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    database: process.env.DB_NAME || "dentalcare",
 
     ssl: {
         minVersion: "TLSv1.2"
@@ -575,16 +575,17 @@ app.get("/api/patient_appoint", async (req, res) => {
 app.post("/api/patient_appoint", createAppointment);
 
 // SINGULAR ROUTE FOR COMPATIBILITY
-app.post("/api/patient_appointment", createAppointment);
+app.post("/api/patient_appoint", createAppointment);
 
 // UPDATE APPOINTMENT STATUS
 app.put(
-    "/api/patient_appointment/:id/status",
+    "/api/patient_appoint/:id/status",
     updateAppointmentStatus
 );
 
+
 app.put(
-    "/api/patient_appointments/:id/status",
+    "/api/patient_appoint/:id/status",
     updateAppointmentStatus
 );
 
