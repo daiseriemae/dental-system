@@ -316,7 +316,6 @@ async function loadAppointments() {
     }
 }
 
-
 // SELECT DENTAL SERVICE
 function handleServiceChange(event) {
     const newId = event.target.value;
@@ -324,11 +323,12 @@ function handleServiceChange(event) {
     setServiceId(newId);
 
     const chosen = services.find(
-        item => getServiceValue(item) === newId
+        item => String(getServiceValue(item)) === String(newId)
     );
 
     if (!chosen) {
         console.warn("Selected service was not found:", newId);
+        setMessage("Unable to find the selected dental service.");
         return;
     }
 
