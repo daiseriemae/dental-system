@@ -86,7 +86,7 @@ export default function PatientAppointment() {
 
     useEffect(() => {
         loadPatient();
-        loadServices();
+        // loadServices(); // Commented out as per the previous edit
     }, []);
 
     useEffect(() => {
@@ -177,98 +177,6 @@ export default function PatientAppointment() {
 
         } finally {
             setLoadingPatient(false);
-        }
-    }
-
-    // LOAD DENTAL SERVICES
-    async function loadServices() {
-        setLoadingServices(true);
-
-        try {
-            const response = await fetch(
-            `${BASE_URL}/api/services`
-            );
-            const data = await readResponse(response);
-
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Failed to load services."
-                );
-            }
-
-            let loadedServices = [];
-
-            if (Array.isArray(data)) {
-                loadedServices = data;
-            } else if (Array.isArray(data.services)) {
-                loadedServices = data.services;
-            } else if (Array.isArray(data.data)) {
-                loadedServices = data.data;
-            } else if (Array.isArray(data.results)) {
-                loadedServices = data.results;
-            }
-
-            loadedServices = loadedServices.filter(item =>
-                String(getServiceName(item)).trim() !== ""
-            );
-
-            setServices(loadedServices);
-
-            console.log(
-                "Dental services loaded:",
-                loadedServices
-            );
-
-            // PRESELECT SERVICE FROM URL
-            const params = new URLSearchParams(
-                window.location.search
-            );
-
-            const requestedService =
-                params.get("service") ||
-                params.get("serviceName") ||
-                params.get("selectedService");
-
-            const requestedServiceId =
-                params.get("serviceId");
-
-            if (requestedService || requestedServiceId) {
-                const matchedService = loadedServices.find(item => {
-                    const idMatches =
-                        requestedServiceId &&
-                        String(getServiceId(item)) ===
-                        String(requestedServiceId);
-
-                    const nameMatches =
-                        requestedService &&
-                        sameServiceName(
-                            getServiceName(item),
-                            requestedService
-                        );
-
-                    return Boolean(idMatches || nameMatches);
-                });
-
-                if (matchedService) {
-                    setServiceId(getServiceValue(matchedService));
-                } else {
-                    showMessage(
-                        `The selected service "${requestedService || requestedServiceId}" was not found. Please choose from the available services.`,
-                        "error"
-                    );
-                }
-            }
-
-        } catch (error) {
-            console.error("Load services failed:", error);
-
-            showMessage(
-                "Unable to load dental services. Check your backend server.",
-                "error"
-            );
-
-        } finally {
-            setLoadingServices(false);
         }
     }
 
