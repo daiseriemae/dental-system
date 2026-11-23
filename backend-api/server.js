@@ -122,21 +122,26 @@ app.get("/api/test-db", async (req, res) => {
 
 // ==========================================
 // DENTAL SERVICES API
-// Table: services
-// Columns: id, name, price, description
+// Automatically detects actual TiDB column names
 // ==========================================
 
 // GET ALL SERVICES
 app.get("/api/services", async (req, res) => {
     try {
+        const columns = await getServiceColumns();
+
+        const descriptionSelect = columns.description
+            ? `${quoteColumn(columns.description)} AS description`
+            : "NULL AS description";
+
         const [services] = await db.execute(`
             SELECT
-                id,
-                name,
-                price,
-                description
+                ${quoteColumn(columns.id)} AS id,
+                ${quoteColumn(columns.name)} AS name,
+                ${quoteColumn(columns.price)} AS price,
+                ${descriptionSelect}
             FROM services
-            ORDER BY id DESC
+            ORDER BY ${quoteColumn(columns.id)} DESC
         `);
 
         res.status(200).json({
@@ -155,21 +160,32 @@ app.get("/api/services", async (req, res) => {
     }
 });
 
+
 // ADD NEW SERVICE
 app.post("/api/services", async (req, res) => {
     try {
+        const columns = await getServiceColumns();
+
         const {
             name,
             service_name,
             price,
-            description
+            service_price,
+            description,
+            service_description
         } = req.body || {};
 
         const finalName = String(
             name || service_name || ""
         ).trim();
 
-        const finalPrice = Number(price);
+        const finalPrice = Number(
+            price ?? service_price
+        );
+
+        const finalDescription = String(
+            description ?? service_description ?? ""
+        ).trim();
 
         if (!finalName) {
             return res.status(400).json({
@@ -178,19 +194,11 @@ app.post("/api/services", async (req, res) => {
             });
         }
 
-        if (finalName.length > 150) {
-            return res.status(400).json({
-                success: false,
-                message: "Service name cannot exceed 150 characters."
-            });
-        }
-
         if (
-            price === undefined ||
-            price === null ||
-            price === "" ||
             !Number.isFinite(finalPrice) ||
-            finalPrice < 0
+            finalPrice < 0 ||
+            price === "" ||
+            service_price === ""
         ) {
             return res.status(400).json({
                 success: false,
@@ -198,38 +206,50 @@ app.post("/api/services", async (req, res) => {
             });
         }
 
-        const finalDescription =
-            description ? String(description).trim() : null;
+        const insertColumns = [
+            quoteColumn(columns.name),
+            quoteColumn(columns.price)
+        ];
+
+        const insertValues = [finalName, finalPrice];
+
+        if (columns.description) {
+            insertColumns.push(
+                quoteColumn(columns.description)
+            );
+
+            insertValues.push(finalDescription || null);
+        }
+
+        const placeholders = insertValues.map(() => "?").join(", ");
 
         const [result] = await db.execute(
             `INSERT INTO services (
-                name,
-                price,
-                description
-            ) VALUES (?, ?, ?)`,
-            [
-                finalName,
-                finalPrice,
-                finalDescription
-            ]
+                ${insertColumns.join(", ")}
+            ) VALUES (${placeholders})`,
+            insertValues
         );
 
+        const descriptionSelect = columns.description
+            ? `${quoteColumn(columns.description)} AS description`
+            : "NULL AS description";
+
         const [savedRows] = await db.execute(
-            `SELECT id, name, price, description
+            `SELECT
+                ${quoteColumn(columns.id)} AS id,
+                ${quoteColumn(columns.name)} AS name,
+                ${quoteColumn(columns.price)} AS price,
+                ${descriptionSelect}
              FROM services
-             WHERE id = ?
+             WHERE ${quoteColumn(columns.id)} = ?
              LIMIT 1`,
             [result.insertId]
         );
 
-        if (savedRows.length === 0) {
-            throw new Error("Service was inserted but could not be retrieved.");
-        }
-
         res.status(201).json({
             success: true,
             message: "Dental service added successfully.",
-            service: savedRows[0]
+            service: savedRows[0] || null
         });
 
     } catch (error) {
@@ -243,23 +263,33 @@ app.post("/api/services", async (req, res) => {
     }
 });
 
+
 // UPDATE EXISTING SERVICE
 app.put("/api/services/:id", async (req, res) => {
     try {
+        const columns = await getServiceColumns();
         const id = Number(req.params.id);
 
         const {
             name,
             service_name,
             price,
-            description
+            service_price,
+            description,
+            service_description
         } = req.body || {};
 
         const finalName = String(
             name || service_name || ""
         ).trim();
 
-        const finalPrice = Number(price);
+        const finalPrice = Number(
+            price ?? service_price
+        );
+
+        const finalDescription = String(
+            description ?? service_description ?? ""
+        ).trim();
 
         if (!isValidId(id)) {
             return res.status(400).json({
@@ -275,19 +305,11 @@ app.put("/api/services/:id", async (req, res) => {
             });
         }
 
-        if (finalName.length > 150) {
-            return res.status(400).json({
-                success: false,
-                message: "Service name cannot exceed 150 characters."
-            });
-        }
-
         if (
-            price === undefined ||
-            price === null ||
-            price === "" ||
             !Number.isFinite(finalPrice) ||
-            finalPrice < 0
+            finalPrice < 0 ||
+            price === "" ||
+            service_price === ""
         ) {
             return res.status(400).json({
                 success: false,
@@ -296,9 +318,9 @@ app.put("/api/services/:id", async (req, res) => {
         }
 
         const [existingRows] = await db.execute(
-            `SELECT id
+            `SELECT ${quoteColumn(columns.id)} AS id
              FROM services
-             WHERE id = ?
+             WHERE ${quoteColumn(columns.id)} = ?
              LIMIT 1`,
             [id]
         );
@@ -310,28 +332,42 @@ app.put("/api/services/:id", async (req, res) => {
             });
         }
 
-        const finalDescription =
-            description ? String(description).trim() : null;
+        const updateParts = [
+            `${quoteColumn(columns.name)} = ?`,
+            `${quoteColumn(columns.price)} = ?`
+        ];
+
+        const updateValues = [finalName, finalPrice];
+
+        if (columns.description) {
+            updateParts.push(
+                `${quoteColumn(columns.description)} = ?`
+            );
+
+            updateValues.push(finalDescription || null);
+        }
+
+        updateValues.push(id);
 
         await db.execute(
             `UPDATE services
-             SET
-                name = ?,
-                price = ?,
-                description = ?
-             WHERE id = ?`,
-            [
-                finalName,
-                finalPrice,
-                finalDescription,
-                id
-            ]
+             SET ${updateParts.join(", ")}
+             WHERE ${quoteColumn(columns.id)} = ?`,
+            updateValues
         );
 
+        const descriptionSelect = columns.description
+            ? `${quoteColumn(columns.description)} AS description`
+            : "NULL AS description";
+
         const [updatedRows] = await db.execute(
-            `SELECT id, name, price, description
+            `SELECT
+                ${quoteColumn(columns.id)} AS id,
+                ${quoteColumn(columns.name)} AS name,
+                ${quoteColumn(columns.price)} AS price,
+                ${descriptionSelect}
              FROM services
-             WHERE id = ?
+             WHERE ${quoteColumn(columns.id)} = ?
              LIMIT 1`,
             [id]
         );
@@ -353,9 +389,11 @@ app.put("/api/services/:id", async (req, res) => {
     }
 });
 
+
 // DELETE SERVICE
 app.delete("/api/services/:id", async (req, res) => {
     try {
+        const columns = await getServiceColumns();
         const id = Number(req.params.id);
 
         if (!isValidId(id)) {
@@ -366,9 +404,9 @@ app.delete("/api/services/:id", async (req, res) => {
         }
 
         const [existingRows] = await db.execute(
-            `SELECT id
+            `SELECT ${quoteColumn(columns.id)} AS id
              FROM services
-             WHERE id = ?
+             WHERE ${quoteColumn(columns.id)} = ?
              LIMIT 1`,
             [id]
         );
@@ -382,7 +420,7 @@ app.delete("/api/services/:id", async (req, res) => {
 
         await db.execute(
             `DELETE FROM services
-             WHERE id = ?`,
+             WHERE ${quoteColumn(columns.id)} = ?`,
             [id]
         );
 
