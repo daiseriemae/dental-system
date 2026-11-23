@@ -2,11 +2,19 @@
 import { useState, useEffect, useCallback } from "react";
 import Sidebar from "./Sidebar.jsx";
 
+// ==========================================
+// BACKEND API - RENDER + TiDB
+// ==========================================
+
 const BASE_URL = "https://dental-system-rzqb.onrender.com";
 
-const API_URL = `${BASE_URL}/api/patient_appoint`;
 const PATIENT_API = `${BASE_URL}/api/patients`;
 const SERVICES_API = `${BASE_URL}/api/services`;
+const APPOINTMENT_API = `${BASE_URL}/api/patient_appoint`;
+
+// ==========================================
+// SERVICE HELPERS
+// ==========================================
 
 const getServiceId = (item) =>
     item?.id ??
@@ -20,14 +28,10 @@ const getServiceName = (item) =>
     item?.service ??
     item?.name ??
     item?.title ??
-    item?.details ??
     "";
 
 const getServicePrice = (item) =>
-    item?.price ??
-    item?.cost ??
-    item?.servicePrice ??
-    0;
+    item?.price ?? item?.cost ?? 0;
 
 const getServiceValue = (item) =>
     String(getServiceId(item) ?? getServiceName(item));
@@ -37,6 +41,29 @@ const formatPrice = (price) =>
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });
+
+// ==========================================
+// APPOINTMENT HELPERS
+// ==========================================
+
+const getAppointmentId = (item) =>
+    item?.id ??
+    item?.appointment_id ??
+    item?._id;
+
+const getAppointmentPatientId = (item) =>
+    item?.patient_id ??
+    item?.patientId ??
+    item?.patient_code ??
+    item?.patientCode ??
+    "";
+
+const getAppointmentStatus = (item) =>
+    item?.status || "Pending";
+
+// ==========================================
+// API RESPONSE HELPER
+// ==========================================
 
 async function readResponse(response) {
     const text = await response.text();
@@ -50,23 +77,25 @@ async function readResponse(response) {
     }
 }
 
-function getAppointmentPatientId(item) {
-    return (
-        item?.patientId ??
-        item?.patient_id ??
-        item?.patientCode ??
-        item?.patient_code ??
-        ""
-    );
+function getErrorMessage(data, fallback) {
+    return data?.message || data?.error || fallback;
 }
 
+// ==========================================
+// MAIN COMPONENT
+// ==========================================
+
 export default function PatientAppointment() {
+
+    // ======================================
+    // STATES
+    // ======================================
+
     const [appointments, setAppointments] = useState([]);
     const [services, setServices] = useState([]);
 
     const [patientId, setPatientId] = useState("");
     const [patientName, setPatientName] = useState("");
-    const [loadingPatient, setLoadingPatient] = useState(true);
 
     const [serviceId, setServiceId] = useState("");
     const [dentist, setDentist] = useState("");
@@ -77,30 +106,48 @@ export default function PatientAppointment() {
     const [message, setMessage] = useState("");
     const [messageType, setMessageType] = useState("success");
 
+    const [loadingPatient, setLoadingPatient] = useState(true);
     const [loadingServices, setLoadingServices] = useState(true);
     const [loadingAppointments, setLoadingAppointments] = useState(false);
+
     const [submitting, setSubmitting] = useState(false);
     const [cancellingId, setCancellingId] = useState(null);
 
-    const selectedService =
-        services.find(
-            item => getServiceValue(item) === String(serviceId)
-        ) || null;
+    // ======================================
+    // SELECTED SERVICE
+    // ======================================
+
+    const selectedService = services.find(
+        item => getServiceValue(item) === String(serviceId)
+    ) || null;
+
+    // ======================================
+    // FILTER LOGGED-IN PATIENT APPOINTMENTS
+    // ======================================
 
     const myAppointments = appointments.filter(item =>
         String(getAppointmentPatientId(item)) === String(patientId)
     );
+
+    // ======================================
+    // MESSAGE
+    // ======================================
 
     function showMessage(text, type = "success") {
         setMessage(text);
         setMessageType(type);
     }
 
-    // LOAD PATIENT FROM MYSQL
+    // ======================================
+    // LOAD LOGGED-IN PATIENT FROM TiDB
+    // ======================================
+
     const loadPatient = useCallback(async () => {
+
         setLoadingPatient(true);
 
         try {
+
             const email = localStorage.getItem("userEmail");
 
             if (!email) {
@@ -117,46 +164,50 @@ export default function PatientAppointment() {
 
             if (!response.ok) {
                 throw new Error(
-                    data.message || "Patient record not found."
+                    getErrorMessage(data, "Patient record not found.")
                 );
             }
 
-            const patient =
-                data.patient ||
-                data.data ||
-                data;
-
-            // USE THE EXISTING DATABASE PATIENT CODE
-            const actualPatientId =
-                patient.patient_id ??
-                patient.patientCode ??
-                patient.patientId;
+            const patient = data.patient || data.data || data;
 
             const fullName =
                 patient.name ||
+                patient.full_name ||
                 `${patient.first_name || patient.firstName || ""} ${
                     patient.last_name || patient.lastName || ""
                 }`.trim();
 
-            if (!actualPatientId) {
+            // IMPORTANT:
+            // Use the existing patient_id from TiDB.
+            // Do not generate another patient ID.
+            const existingPatientId =
+                patient.patient_id ??
+                patient.patientId ??
+                patient.patient_code ??
+                patient.patientCode;
+
+            if (!existingPatientId) {
                 throw new Error(
-                    "Patient ID is missing from your database record."
+                    "Patient ID not found in your database record."
                 );
             }
 
             if (!fullName) {
                 throw new Error(
-                    "Patient name is missing from your database record."
+                    "Patient name not found in your database record."
                 );
             }
 
-            setPatientId(String(actualPatientId));
+            setPatientId(String(existingPatientId));
             setPatientName(fullName);
 
-            console.log("Loaded database patient:", patient);
-            console.log("Existing patient ID:", actualPatientId);
+            console.log("Patient loaded from TiDB:", {
+                patientId: existingPatientId,
+                patientName: fullName
+            });
 
         } catch (error) {
+
             console.error("Patient loading error:", error);
 
             setPatientId("");
@@ -165,21 +216,30 @@ export default function PatientAppointment() {
             showMessage(error.message, "error");
 
         } finally {
+
             setLoadingPatient(false);
+
         }
+
     }, []);
 
-    // LOAD SERVICES
+    // ======================================
+    // LOAD SERVICES FROM TiDB
+    // ======================================
+
     const loadServices = useCallback(async () => {
+
         setLoadingServices(true);
 
         try {
+
             const response = await fetch(SERVICES_API);
+
             const data = await readResponse(response);
 
             if (!response.ok) {
                 throw new Error(
-                    data.message || "Unable to load dental services."
+                    getErrorMessage(data, "Unable to load services.")
                 );
             }
 
@@ -201,9 +261,8 @@ export default function PatientAppointment() {
 
             setServices(loadedServices);
 
-            console.log("Loaded services:", loadedServices);
-
             // PRESELECT SERVICE FROM URL
+
             const params = new URLSearchParams(
                 window.location.search
             );
@@ -216,7 +275,9 @@ export default function PatientAppointment() {
                 params.get("selectedService");
 
             if (requestedId || requestedName) {
+
                 const matched = loadedServices.find(item => {
+
                     const idMatches =
                         requestedId &&
                         String(getServiceId(item)) === String(requestedId);
@@ -227,31 +288,43 @@ export default function PatientAppointment() {
                         requestedName.toLowerCase().trim();
 
                     return Boolean(idMatches || nameMatches);
+
                 });
 
                 if (matched) {
                     setServiceId(getServiceValue(matched));
                 } else {
                     showMessage(
-                        "Requested dental service was not found. Please select a service.",
+                        "Requested service was not found. Please select a service.",
                         "error"
                     );
                 }
             }
 
+            console.log("Services loaded:", loadedServices);
+
         } catch (error) {
-            console.error("Services loading error:", error);
+
+            console.error("Service loading error:", error);
 
             setServices([]);
+
             showMessage(error.message, "error");
 
         } finally {
+
             setLoadingServices(false);
+
         }
+
     }, []);
 
-    // LOAD APPOINTMENTS
+    // ======================================
+    // LOAD APPOINTMENTS FROM TiDB
+    // ======================================
+
     const loadAppointments = useCallback(async (currentPatientId) => {
+
         if (!currentPatientId) {
             setAppointments([]);
             return;
@@ -260,62 +333,95 @@ export default function PatientAppointment() {
         setLoadingAppointments(true);
 
         try {
-            const response = await fetch(API_URL);
+
+            // GET APPOINTMENTS FROM TiDB
+
+            const response = await fetch(APPOINTMENT_API);
+
             const data = await readResponse(response);
 
             if (!response.ok) {
                 throw new Error(
-                    data.message || "Unable to load appointments."
+                    getErrorMessage(
+                        data,
+                        "Unable to retrieve appointments."
+                    )
                 );
             }
 
-            const loadedAppointments = Array.isArray(data)
-                ? data
-                : data.appointments ||
-                  data.data ||
-                  data.results ||
-                  [];
+            let loadedAppointments = [];
 
-            if (!Array.isArray(loadedAppointments)) {
-                throw new Error("Invalid appointment data received.");
+            if (Array.isArray(data)) {
+                loadedAppointments = data;
+            } else if (Array.isArray(data.appointments)) {
+                loadedAppointments = data.appointments;
+            } else if (Array.isArray(data.data)) {
+                loadedAppointments = data.data;
+            } else if (Array.isArray(data.results)) {
+                loadedAppointments = data.results;
             }
 
-            const filtered = loadedAppointments.filter(item =>
+            // DISPLAY ONLY THE LOGGED-IN PATIENT'S APPOINTMENTS
+
+            const filteredAppointments = loadedAppointments.filter(item =>
                 String(getAppointmentPatientId(item)) ===
                 String(currentPatientId)
             );
 
-            setAppointments(filtered);
+            setAppointments(filteredAppointments);
 
-            console.log("Patient appointments:", filtered);
+            console.log(
+                "Appointments retrieved from TiDB:",
+                filteredAppointments
+            );
 
         } catch (error) {
+
             console.error("Appointment loading error:", error);
+
+            setAppointments([]);
 
             showMessage(error.message, "error");
 
         } finally {
+
             setLoadingAppointments(false);
+
         }
+
     }, []);
 
+    // ======================================
     // INITIAL LOADING
+    // ======================================
+
     useEffect(() => {
+
         loadPatient();
         loadServices();
+
     }, [loadPatient, loadServices]);
 
-    // LOAD APPOINTMENTS AFTER PATIENT LOADS
+    // ======================================
+    // LOAD PATIENT APPOINTMENTS
+    // ======================================
+
     useEffect(() => {
+
         if (patientId) {
             loadAppointments(patientId);
         } else {
             setAppointments([]);
         }
+
     }, [patientId, loadAppointments]);
 
-    // SELECT SERVICE
+    // ======================================
+    // SELECT DENTAL SERVICE
+    // ======================================
+
     function handleServiceChange(event) {
+
         const newId = event.target.value;
 
         setServiceId(newId);
@@ -332,43 +438,61 @@ export default function PatientAppointment() {
                 "Selected dental service could not be found.",
                 "error"
             );
-            return;
         }
 
-        console.log("Selected service:", chosen);
     }
 
-    // SUBMIT APPOINTMENT
+    // ======================================
+    // SUBMIT APPOINTMENT TO TiDB
+    // ======================================
+
     async function formSubmit(event) {
+
         event.preventDefault();
 
         if (submitting) return;
 
         setMessage("");
 
-        if (!patientId || !patientName) {
+        const enteredPatientId = patientId.trim();
+
+        // VALIDATE PATIENT
+
+        if (!enteredPatientId || !patientName) {
+
             showMessage(
-                "Patient information is not loaded. Please log in again.",
+                "Patient information is missing. Please log in again.",
                 "error"
             );
+
             return;
         }
+
+        // VALIDATE SERVICE
 
         if (!selectedService) {
-            showMessage("Please select a dental service.", "error");
+
+            showMessage(
+                "Please select a dental service.",
+                "error"
+            );
+
             return;
         }
 
-        const serviceName = getServiceName(selectedService);
-        const selectedServiceId = getServiceId(selectedService);
+        // VALIDATE REQUIRED FIELDS
 
         if (!dentist || !date || !time) {
+
             showMessage(
                 "Please complete all required appointment details.",
                 "error"
             );
+
             return;
         }
+
+        // VALIDATE DATE
 
         const today = new Date();
 
@@ -379,97 +503,175 @@ export default function PatientAppointment() {
         ].join("-");
 
         if (date < localToday) {
+
             showMessage(
                 "Please select today or a future appointment date.",
                 "error"
             );
+
             return;
         }
 
-        // IMPORTANT: patientId is the existing patients.patient_id
-        const appointmentData = {
-            patientId: patientId,
-            patientName: patientName,
-            service: serviceName,
-            serviceId: selectedServiceId ?? null,
-            price: Number(getServicePrice(selectedService)) || 0,
-            dentist: dentist,
-            date: date,
-            time: time,
-            notes: notes.trim()
-        };
+        // ==================================
+        // APPOINTMENT DATA
+        // ==================================
 
-        console.log("Submitting appointment:", appointmentData);
+        // IMPORTANT:
+        // Do not generate an appointment ID.
+        // TiDB will provide the ID automatically
+        // through the backend's insertId.
+
+        const appointmentData = {
+
+            patientId: enteredPatientId,
+
+            patientName: patientName,
+
+            service: getServiceName(selectedService),
+
+            serviceId: getServiceId(selectedService),
+
+            price: Number(getServicePrice(selectedService)) || 0,
+
+            dentist: dentist,
+
+            date: date,
+
+            time: time,
+
+            notes: notes.trim()
+
+        };
 
         setSubmitting(true);
 
         try {
-            const response = await fetch(API_URL, {
+
+            // ==================================
+            // POST APPOINTMENT TO TiDB
+            // ==================================
+
+            const response = await fetch(APPOINTMENT_API, {
+
                 method: "POST",
+
                 headers: {
                     "Content-Type": "application/json"
                 },
+
                 body: JSON.stringify(appointmentData)
+
             });
 
-            const result = await readResponse(response);
-
-            console.log("Appointment server response:", result);
+            const data = await readResponse(response);
 
             if (!response.ok) {
+
                 throw new Error(
-                    result.message ||
-                    result.error ||
-                    "Failed to book appointment."
+                    getErrorMessage(
+                        data,
+                        "Unable to save appointment."
+                    )
+                );
+
+            }
+
+            // ==================================
+            // DATABASE RESPONSE
+            // ==================================
+
+            const savedAppointment =
+                data.appointment || data.data || null;
+
+            console.log(
+                "Appointment successfully saved to TiDB:",
+                savedAppointment || data
+            );
+
+            // DISPLAY DATABASE-GENERATED ID
+
+            if (savedAppointment) {
+                console.log(
+                    "TiDB Appointment ID:",
+                    getAppointmentId(savedAppointment)
                 );
             }
 
+            // ==================================
+            // REFRESH APPOINTMENTS FROM TiDB
+            // ==================================
+
+            await loadAppointments(enteredPatientId);
+
             showMessage(
-                result.message || "Appointment successfully booked!",
+                data.message || "Appointment submitted successfully!",
                 "success"
             );
 
+            // ==================================
             // CLEAR FORM
+            // ==================================
+
             setServiceId("");
             setDentist("");
             setDate("");
             setTime("");
             setNotes("");
 
-            // REFRESH APPOINTMENT TABLE
-            await loadAppointments(patientId);
-
         } catch (error) {
-            console.error("Appointment submission error:", error);
+
+            console.error(
+                "Appointment submission error:",
+                error
+            );
 
             showMessage(
-                error.message || "Unable to submit appointment.",
+                error.message || "Unable to save appointment.",
                 "error"
             );
 
         } finally {
+
             setSubmitting(false);
+
         }
+
     }
 
-    // CANCEL APPOINTMENT
+    // ======================================
+    // CANCEL APPOINTMENT IN TiDB
+    // ======================================
+
     async function cancelAppointment(appointment) {
-        const id = appointment.id ?? appointment._id;
+
+        // USE EXISTING DATABASE APPOINTMENT ID
+
+        const id = getAppointmentId(appointment);
 
         const status = String(
-            appointment.status || "Pending"
+            getAppointmentStatus(appointment)
         ).toLowerCase();
 
-        if (!id) {
-            showMessage("Appointment ID not found.", "error");
+        if (id == null) {
+
+            showMessage(
+                "Database appointment ID not found.",
+                "error"
+            );
+
             return;
         }
 
-        if (status === "cancelled" || status === "completed") {
+        if (
+            status === "cancelled" ||
+            status === "completed"
+        ) {
+
             showMessage(
                 "This appointment can no longer be cancelled.",
                 "error"
             );
+
             return;
         }
 
@@ -483,13 +685,20 @@ export default function PatientAppointment() {
         setMessage("");
 
         try {
+
+            // ==================================
+            // UPDATE APPOINTMENT STATUS IN TiDB
+            // ==================================
+
             const response = await fetch(
-                `${API_URL}/${encodeURIComponent(id)}/status`,
+                `${APPOINTMENT_API}/${encodeURIComponent(id)}/status`,
                 {
                     method: "PUT",
+
                     headers: {
                         "Content-Type": "application/json"
                     },
+
                     body: JSON.stringify({
                         status: "Cancelled"
                     })
@@ -499,12 +708,24 @@ export default function PatientAppointment() {
             const data = await readResponse(response);
 
             if (!response.ok) {
+
                 throw new Error(
-                    data.message ||
-                    data.error ||
-                    "Failed to cancel appointment."
+                    getErrorMessage(
+                        data,
+                        "Unable to cancel appointment."
+                    )
                 );
+
             }
+
+            console.log(
+                "Appointment cancelled in TiDB:",
+                id
+            );
+
+            // ==================================
+            // REFRESH APPOINTMENTS
+            // ==================================
 
             await loadAppointments(patientId);
 
@@ -514,7 +735,11 @@ export default function PatientAppointment() {
             );
 
         } catch (error) {
-            console.error("Cancellation error:", error);
+
+            console.error(
+                "Appointment cancellation error:",
+                error
+            );
 
             showMessage(
                 error.message || "Unable to cancel appointment.",
@@ -522,11 +747,17 @@ export default function PatientAppointment() {
             );
 
         } finally {
+
             setCancellingId(null);
+
         }
+
     }
 
-    // MINIMUM DATE
+    // ======================================
+    // MINIMUM APPOINTMENT DATE
+    // ======================================
+
     const now = new Date();
 
     const minDate = [
@@ -535,10 +766,16 @@ export default function PatientAppointment() {
         String(now.getDate()).padStart(2, "0")
     ].join("-");
 
+    // ======================================
+    // DISPLAY
+    // ======================================
+
     return (
         <>
             <style>{`
-                * { box-sizing: border-box; }
+                * {
+                    box-sizing: border-box;
+                }
 
                 body {
                     font-family: Arial, sans-serif;
@@ -574,7 +811,9 @@ export default function PatientAppointment() {
                     margin: 0 auto;
                 }
 
-                .appointment-intro { margin-bottom: 25px; }
+                .appointment-intro {
+                    margin-bottom: 25px;
+                }
 
                 .appointment-intro h2 {
                     color: #4f3d63;
@@ -582,7 +821,9 @@ export default function PatientAppointment() {
                     margin: 0 0 7px;
                 }
 
-                .appointment-intro p { color: #6b5b7d; }
+                .appointment-intro p {
+                    color: #6b5b7d;
+                }
 
                 .appointment-form-card,
                 .appointment-table-card {
@@ -593,7 +834,9 @@ export default function PatientAppointment() {
                     margin-bottom: 30px;
                 }
 
-                .appointment-form-group { margin-bottom: 20px; }
+                .appointment-form-group {
+                    margin-bottom: 20px;
+                }
 
                 .appointment-form-group label {
                     display: block;
@@ -651,7 +894,9 @@ export default function PatientAppointment() {
                     cursor: pointer;
                 }
 
-                .appointment-submit-btn:hover { background: #80609e; }
+                .appointment-submit-btn:hover {
+                    background: #80609e;
+                }
 
                 .appointment-submit-btn:disabled {
                     opacity: .65;
@@ -687,7 +932,9 @@ export default function PatientAppointment() {
                     color: #4f3d63;
                 }
 
-                .appointment-table-card { overflow-x: auto; }
+                .appointment-table-card {
+                    overflow-x: auto;
+                }
 
                 .appointment-table-card h2 {
                     color: #4f3d63;
@@ -745,6 +992,11 @@ export default function PatientAppointment() {
                     color: #176638 !important;
                 }
 
+                .appointment-status.status-confirmed {
+                    background: #dceaff;
+                    color: #174a85 !important;
+                }
+
                 .appointment-cancel-btn {
                     background: #dc3545;
                     color: #fff;
@@ -757,7 +1009,9 @@ export default function PatientAppointment() {
                     white-space: nowrap;
                 }
 
-                .appointment-cancel-btn:hover { background: #b02a37; }
+                .appointment-cancel-btn:hover {
+                    background: #b02a37;
+                }
 
                 .appointment-cancel-btn:disabled {
                     opacity: .6;
@@ -770,10 +1024,14 @@ export default function PatientAppointment() {
                     color: #6b5b7d !important;
                 }
 
-                .appointment-mobile-header { display: none; }
+                .appointment-mobile-header {
+                    display: none;
+                }
 
                 @media (max-width: 768px) {
-                    .appointment-main { margin-left: 0; }
+                    .appointment-main {
+                        margin-left: 0;
+                    }
 
                     .appointment-mobile-header {
                         display: flex;
@@ -793,9 +1051,13 @@ export default function PatientAppointment() {
                         cursor: pointer;
                     }
 
-                    .appointment-topbar { display: none; }
+                    .appointment-topbar {
+                        display: none;
+                    }
 
-                    .appointment-content { padding: 20px 14px; }
+                    .appointment-content {
+                        padding: 20px 14px;
+                    }
 
                     .appointment-row {
                         grid-template-columns: 1fr;
@@ -803,9 +1065,13 @@ export default function PatientAppointment() {
                     }
 
                     .appointment-form-card,
-                    .appointment-table-card { padding: 20px; }
+                    .appointment-table-card {
+                        padding: 20px;
+                    }
 
-                    .appointment-table { min-width: 900px; }
+                    .appointment-table {
+                        min-width: 900px;
+                    }
                 }
             `}</style>
 
@@ -813,7 +1079,10 @@ export default function PatientAppointment() {
 
             <div className="appointment-main">
 
+                {/* MOBILE HEADER */}
+
                 <div className="appointment-mobile-header">
+
                     <button
                         className="appointment-menu-btn"
                         type="button"
@@ -832,7 +1101,10 @@ export default function PatientAppointment() {
                     </button>
 
                     <strong>DentalCare</strong>
+
                 </div>
+
+                {/* TOP HEADER */}
 
                 <header className="appointment-topbar">
                     <h1>Book an Appointment</h1>
@@ -848,6 +1120,8 @@ export default function PatientAppointment() {
                         </p>
                     </div>
 
+                    {/* MESSAGE */}
+
                     {message && (
                         <div
                             className={`appointment-message ${messageType}`}
@@ -857,11 +1131,16 @@ export default function PatientAppointment() {
                         </div>
                     )}
 
+                    {/* APPOINTMENT FORM */}
+
                     <section className="appointment-form-card">
 
                         <form onSubmit={formSubmit}>
 
+                            {/* PATIENT ID */}
+
                             <div className="appointment-form-group">
+
                                 <label htmlFor="patientId">
                                     Patient ID
                                 </label>
@@ -869,16 +1148,39 @@ export default function PatientAppointment() {
                                 <input
                                     type="text"
                                     id="patientId"
+                                    value={patientId}
+                                    placeholder="Loading Patient ID..."
+                                    readOnly
+                                    required
+                                />
+
+                            </div>
+
+                            {/* PATIENT NAME */}
+
+                            <div className="appointment-form-group">
+
+                                <label htmlFor="patientName">
+                                    Patient Name
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="patientName"
                                     value={
                                         loadingPatient
                                             ? "Loading patient..."
-                                            : patientId
+                                            : patientName
                                     }
                                     readOnly
                                 />
+
                             </div>
 
+                            {/* DENTAL SERVICE */}
+
                             <div className="appointment-form-group">
+
                                 <label htmlFor="service">
                                     Dental Service
                                 </label>
@@ -893,6 +1195,7 @@ export default function PatientAppointment() {
                                         services.length === 0
                                     }
                                 >
+
                                     <option value="">
                                         {loadingServices
                                             ? "Loading services..."
@@ -902,6 +1205,7 @@ export default function PatientAppointment() {
                                     </option>
 
                                     {services.map((item, index) => (
+
                                         <option
                                             key={getServiceId(item) ?? index}
                                             value={getServiceValue(item)}
@@ -910,13 +1214,18 @@ export default function PatientAppointment() {
                                             {" — ₱"}
                                             {formatPrice(getServicePrice(item))}
                                         </option>
+
                                     ))}
+
                                 </select>
 
                                 {selectedService && (
+
                                     <div className="appointment-info-box">
+
                                         <strong>Selected Service:</strong>{" "}
                                         {getServiceName(selectedService)}
+
                                         <br />
 
                                         <strong>Price:</strong>{" "}
@@ -933,11 +1242,17 @@ export default function PatientAppointment() {
                                                     selectedService.details}
                                             </>
                                         )}
+
                                     </div>
+
                                 )}
+
                             </div>
 
+                            {/* DENTIST */}
+
                             <div className="appointment-form-group">
+
                                 <label htmlFor="dentist">
                                     Preferred Dentist
                                 </label>
@@ -948,22 +1263,33 @@ export default function PatientAppointment() {
                                     onChange={e => setDentist(e.target.value)}
                                     required
                                 >
-                                    <option value="">Select a dentist</option>
+
+                                    <option value="">
+                                        Select a dentist
+                                    </option>
+
                                     <option value="Dr. Jhulance Fernandez">
                                         Dr. Jhulance Fernandez
                                     </option>
+
                                     <option value="Dr. John Cruz">
                                         Dr. John Cruz
                                     </option>
+
                                     <option value="Dr. Angela Reyes">
                                         Dr. Angela Reyes
                                     </option>
+
                                 </select>
+
                             </div>
+
+                            {/* DATE AND TIME */}
 
                             <div className="appointment-row">
 
                                 <div className="appointment-form-group">
+
                                     <label htmlFor="date">
                                         Preferred Date
                                     </label>
@@ -976,9 +1302,11 @@ export default function PatientAppointment() {
                                         onChange={e => setDate(e.target.value)}
                                         required
                                     />
+
                                 </div>
 
                                 <div className="appointment-form-group">
+
                                     <label htmlFor="time">
                                         Preferred Time
                                     </label>
@@ -989,20 +1317,35 @@ export default function PatientAppointment() {
                                         onChange={e => setTime(e.target.value)}
                                         required
                                     >
-                                        <option value="">Select time</option>
-                                        <option value="9:00 AM">9:00 AM</option>
-                                        <option value="10:00 AM">10:00 AM</option>
-                                        <option value="11:00 AM">11:00 AM</option>
-                                        <option value="1:00 PM">1:00 PM</option>
-                                        <option value="2:00 PM">2:00 PM</option>
-                                        <option value="3:00 PM">3:00 PM</option>
-                                        <option value="4:00 PM">4:00 PM</option>
+
+                                        <option value="">
+                                            Select time
+                                        </option>
+
+                                        {[
+                                            "9:00 AM",
+                                            "10:00 AM",
+                                            "11:00 AM",
+                                            "1:00 PM",
+                                            "2:00 PM",
+                                            "3:00 PM",
+                                            "4:00 PM"
+                                        ].map(item => (
+                                            <option key={item} value={item}>
+                                                {item}
+                                            </option>
+                                        ))}
+
                                     </select>
+
                                 </div>
 
                             </div>
 
+                            {/* NOTES */}
+
                             <div className="appointment-form-group">
+
                                 <label htmlFor="notes">
                                     Additional Notes
                                 </label>
@@ -1013,7 +1356,10 @@ export default function PatientAppointment() {
                                     onChange={e => setNotes(e.target.value)}
                                     placeholder="Tell us if you have any concerns or additional information..."
                                 />
+
                             </div>
+
+                            {/* SUBMIT */}
 
                             <button
                                 type="submit"
@@ -1023,26 +1369,37 @@ export default function PatientAppointment() {
                                     loadingServices ||
                                     loadingPatient ||
                                     !patientId ||
+                                    !patientName ||
                                     !selectedService
                                 }
                             >
                                 {submitting
-                                    ? "Submitting..."
+                                    ? "Saving Appointment..."
                                     : "📅 Request Appointment"}
                             </button>
 
                         </form>
 
+                        {/* REMINDER */}
+
                         <div className="appointment-info-box">
+
                             <strong>Appointment Reminder</strong>
+
                             <br />
+
                             Please arrive at least 10 minutes before
                             your scheduled appointment.
+
                             <br />
+
                             Bring your patient ID when visiting the clinic.
+
                         </div>
 
                     </section>
+
+                    {/* MY APPOINTMENTS */}
 
                     <section className="appointment-table-card">
 
@@ -1052,6 +1409,7 @@ export default function PatientAppointment() {
 
                             <thead>
                                 <tr>
+                                    <th>Appointment ID</th>
                                     <th>Patient ID</th>
                                     <th>Service</th>
                                     <th>Price</th>
@@ -1067,33 +1425,51 @@ export default function PatientAppointment() {
                             <tbody>
 
                                 {loadingAppointments ? (
+
                                     <tr>
-                                        <td colSpan="9" className="appointment-empty">
-                                            Loading appointments...
+                                        <td
+                                            colSpan="10"
+                                            className="appointment-empty"
+                                        >
+                                            Loading appointments from TiDB...
                                         </td>
                                     </tr>
+
                                 ) : myAppointments.length === 0 ? (
+
                                     <tr>
-                                        <td colSpan="9" className="appointment-empty">
+                                        <td
+                                            colSpan="10"
+                                            className="appointment-empty"
+                                        >
                                             {loadingPatient
                                                 ? "Loading patient information..."
-                                                : "No appointments found."}
+                                                : !patientId
+                                                    ? "Patient ID is required to view appointments."
+                                                    : "No appointments found. Book your first appointment above."}
                                         </td>
                                     </tr>
+
                                 ) : (
+
                                     myAppointments.map((appointment, index) => {
-                                        const id =
-                                            appointment.id ??
-                                            appointment._id;
+
+                                        const id = getAppointmentId(appointment);
 
                                         const status =
-                                            appointment.status || "Pending";
+                                            getAppointmentStatus(appointment);
 
                                         const normalizedStatus =
                                             String(status).toLowerCase();
 
                                         return (
+
                                             <tr key={id ?? index}>
+
+                                                <td>
+                                                    {id ?? "—"}
+                                                </td>
+
                                                 <td>
                                                     {getAppointmentPatientId(appointment) || "—"}
                                                 </td>
@@ -1107,7 +1483,9 @@ export default function PatientAppointment() {
                                                 <td>
                                                     {appointment.price == null
                                                         ? "—"
-                                                        : `₱${formatPrice(appointment.price)}`}
+                                                        : `₱${formatPrice(
+                                                            appointment.price
+                                                        )}`}
                                                 </td>
 
                                                 <td>
@@ -1131,22 +1509,28 @@ export default function PatientAppointment() {
                                                 </td>
 
                                                 <td>
+
                                                     <span
                                                         className={`appointment-status ${
                                                             normalizedStatus === "cancelled"
                                                                 ? "status-cancelled"
                                                                 : normalizedStatus === "completed"
                                                                     ? "status-completed"
-                                                                    : ""
+                                                                    : normalizedStatus === "confirmed"
+                                                                        ? "status-confirmed"
+                                                                        : ""
                                                         }`}
                                                     >
                                                         {status}
                                                     </span>
+
                                                 </td>
 
                                                 <td>
+
                                                     {normalizedStatus !== "cancelled" &&
                                                     normalizedStatus !== "completed" ? (
+
                                                         <button
                                                             type="button"
                                                             className="appointment-cancel-btn"
@@ -1161,11 +1545,19 @@ export default function PatientAppointment() {
                                                                 ? "Cancelling..."
                                                                 : "Cancel"}
                                                         </button>
-                                                    ) : "—"}
+
+                                                    ) : (
+                                                        "—"
+                                                    )}
+
                                                 </td>
+
                                             </tr>
+
                                         );
+
                                     })
+
                                 )}
 
                             </tbody>
@@ -1175,6 +1567,7 @@ export default function PatientAppointment() {
                     </section>
 
                 </main>
+
             </div>
         </>
     );
