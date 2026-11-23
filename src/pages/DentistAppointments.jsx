@@ -16,7 +16,7 @@ export default function DentistAppointments() {
 
 
 const BASE_URL = "https://dental-system-rzqb.onrender.com";
-const API_URL = `${BASE_URL}/api/dentist_appoint`;
+const API_URL = `${BASE_URL}/api/patient_appoint`;
 
 
 function getRegisteredDentistName() {
@@ -51,12 +51,15 @@ function getRegisteredDentistName() {
             }
 
             const data = await response.json();
+            const appointmentRows = Array.isArray(data)
+                ? data
+                : data.appointments || data.data || data.results;
 
-            if (!Array.isArray(data)) {
+            if (!Array.isArray(appointmentRows)) {
                 throw new Error("Invalid appointment data received.");
             }
 
-            const formattedAppointments = data.map((item) => ({
+            const formattedAppointments = appointmentRows.map((item) => ({
                 id: String(item.id),
 
                 patientId:
@@ -103,7 +106,7 @@ function getRegisteredDentistName() {
             setAppointments([]);
 
             alert(
-                "Unable to load appointments. Check that XAMPP MySQL and your Express backend are running."
+                "Unable to load appointments. Check that the Render backend and TiDB database are running."
             );
 
         } finally {
