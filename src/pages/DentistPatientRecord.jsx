@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar.jsx";
 
 
-const BASE_URL = "https://dental-system-rzqb.onrender.com";
+const BASE_URL = (
+    import.meta.env.VITE_API_URL ||
+    (["localhost", "127.0.0.1"].includes(window.location.hostname)
+        ? "http://localhost:8080"
+        : "https://dental-system-rzqb.onrender.com")
+).replace(/\/+$/, "");
 const API_URL = `${BASE_URL}/api/patients`;
 
 const normalizePatient = (patient = {}) => {
