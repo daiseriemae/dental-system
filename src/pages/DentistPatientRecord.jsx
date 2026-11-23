@@ -5,6 +5,26 @@ import Sidebar from "./Sidebar.jsx";
 const BASE_URL = "https://dental-system-rzqb.onrender.com";
 const API_URL = `${BASE_URL}/api/patients`;
 
+const normalizePatient = (patient = {}) => {
+    let history = patient.history;
+    if (typeof history === "string") { try { history = JSON.parse(history); } catch { history = []; } }
+    return {
+        ...patient,
+        id: patient.id,
+        patientCode: patient.patientCode ?? patient.patient_id ?? "",
+        name: patient.name ?? [patient.first_name, patient.last_name].filter(Boolean).join(" "),
+        email: patient.email ?? "",
+        phone: patient.phone ?? "",
+        birthdate: patient.birthdate ?? "",
+        service: patient.service ?? "",
+        status: patient.status ?? "",
+        nextVisit: patient.nextVisit ?? patient.next_visit ?? "",
+        lastVisit: patient.lastVisit ?? patient.last_visit ?? "",
+        history: Array.isArray(history) ? history : [],
+        notes: patient.notes ?? "",
+    };
+};
+
 export default function DentistPatientRecord() {
     const [patients, setPatients] = useState([]);
     const [selectedPatient, setSelectedPatient] = useState(null);
@@ -64,11 +84,12 @@ export default function DentistPatientRecord() {
                 throw new Error("Invalid patient data received.");
             }
 
-            setPatients(patientRows);
+            const normalizedPatients = patientRows.map(normalizePatient);
+            setPatients(normalizedPatients);
 
-            if (patientRows.length > 0) {
-                setSelectedPatient(patientRows[0]);
-                setNotes(patientRows[0].notes || "");
+            if (normalizedPatients.length > 0) {
+                setSelectedPatient(normalizedPatients[0]);
+                setNotes(normalizedPatients[0].notes || "");
             } else {
                 setSelectedPatient(null);
                 setNotes("");
@@ -100,7 +121,7 @@ export default function DentistPatientRecord() {
 
             const data = await response.json();
 
-            const patientData = data.patient || data.data || data;
+            const patientData = normalizePatient(data.patient || data.data || data);
             setSelectedPatient(patientData);
             setNotes(patientData.notes || "");
 
@@ -148,7 +169,7 @@ export default function DentistPatientRecord() {
                 );
             }
 
-            const updatedPatient = data.patient || data;
+            const updatedPatient = normalizePatient(data.patient || data.data || data);
 
             setSelectedPatient(updatedPatient);
 
@@ -240,36 +261,38 @@ export default function DentistPatientRecord() {
                 return;
             }
 
-            const response = await fetch(
-                `${API_URL}/${editID}`,
-                {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(changedData),
-                }
-            );
+            const nameParts = String(editData.name || "").trim().split(/\s+/);
+            const payload = {
+                first_name: nameParts.shift() || "",
+                last_name: nameParts.join(" "),
+                email: editData.email,
+                phone: editData.phone,
+                birthdate: editData.birthdate || null,
+                service: editData.service,
+                status: editData.status,
+                next_visit: editData.nextVisit || null,
+                last_visit: selectedPatient.lastVisit || null,
+                history: selectedPatient.history || [],
+                notes: selectedPatient.notes || "",
+            };
 
+            const response = await fetch(`${API_URL}/${editID}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
             const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Unable to update patient.");
 
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Unable to update patient."
-                );
-            }
+            const detailResponse = await fetch(`${API_URL}/${editID}`);
+            const detailData = await detailResponse.json();
+            if (!detailResponse.ok) throw new Error(detailData.message || "Unable to reload updated patient.");
 
-            const updatedPatient = data.patient || data;
-
+            const updatedPatient = normalizePatient(detailData.patient || detailData.data || detailData);
             setSelectedPatient(updatedPatient);
-
-            setPatients((current) =>
-                current.map((patient) =>
-                    patient.id === updatedPatient.id
-                        ? updatedPatient
-                        : patient
-                )
-            );
+            setPatients((current) => current.map((patient) =>
+                String(patient.id) === String(updatedPatient.id) ? updatedPatient : patient
+            ));
 
             setNotes(updatedPatient.notes || "");
 
@@ -395,8 +418,9 @@ export default function DentistPatientRecord() {
                         const nextData =
                             await nextResponse.json();
 
-                        setSelectedPatient(nextData);
-                        setNotes(nextData.notes || "");
+                        const normalizedNext = normalizePatient(nextData.patient || nextData.data || nextData);
+                        setSelectedPatient(normalizedNext);
+                        setNotes(normalizedNext.notes || "");
                     } else {
                         setSelectedPatient(nextPatient);
                         setNotes(nextPatient.notes || "");
