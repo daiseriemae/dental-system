@@ -98,7 +98,7 @@ export default function DentistPatientRecord() {
             console.error("Load patients error:", error);
 
             alert(
-                "Cannot connect to the backend. Make sure server.js is running on port 8080."
+                "Cannot connect to the Render backend. Please check your internet connection and try again."
             );
         } finally {
             setLoading(false);
@@ -188,7 +188,7 @@ export default function DentistPatientRecord() {
             console.error("Save notes error:", error);
 
             alert(
-                "Cannot connect to the backend-api. Make sure server.js is running on port 8080."
+                "Cannot connect to the Render backend. Please check your internet connection and try again."
             );
         } finally {
             setSaving(false);
@@ -306,7 +306,7 @@ export default function DentistPatientRecord() {
             console.error("Update patient error:", error);
 
             alert(
-                "Cannot update patient record. Make sure server.js is running on port 8080."
+                "Cannot update patient record. Please check that the Render backend is available."
             );
         } finally {
             setSaving(false);
@@ -446,7 +446,7 @@ export default function DentistPatientRecord() {
             console.error("Delete patient error:", error);
 
             alert(
-                `Unable to delete patient record.\n\n${error.message}\n\nMake sure your backend server is running on port 8080 and has a DELETE /api/patients/:id route.`
+                `Unable to delete patient record.\n\n${error.message}\n\nPlease check that the Render backend is available and the DELETE /api/patients/:id route is deployed.`
             );
         } finally {
             setSaving(false);
