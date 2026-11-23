@@ -6,7 +6,9 @@ import Sidebar from "./Sidebar.jsx";
 // BACKEND API - RENDER + TiDB
 // ==========================================
 
-const BASE_URL = "https://dental-system-rzqb.onrender.com";
+const BASE_URL = (import.meta.env.VITE_API_URL || "https://dental-system-rzqb.onrender.com")
+    .replace(/\\/+$/, "")
+    .replace(/\\/api$/, "");
 
 const PATIENT_API = `${BASE_URL}/api/patients`;
 const SERVICES_API = `${BASE_URL}/api/services`;
@@ -60,6 +62,18 @@ const getAppointmentPatientId = (item) =>
 
 const getAppointmentStatus = (item) =>
     item?.status || "Pending";
+
+const normalizeAppointment = (item = {}) => ({
+    ...item,
+    id: item.id ?? item.appointment_id ?? item.appointmentId,
+    patient_id: item.patient_id ?? item.patientId ?? item.patient_code ?? item.patientCode,
+    appointment_date: item.appointment_date ?? item.appointmentDate ?? item.date ?? "",
+    appointment_time: item.appointment_time ?? item.appointmentTime ?? item.time ?? "",
+    service: item.service ?? item.service_name ?? item.serviceName ?? "",
+    dentist: item.dentist ?? item.dentist_name ?? item.dentistName ?? "",
+    status: item.status ?? "Pending",
+    notes: item.notes ?? "",
+});
 
 // ==========================================
 // API RESPONSE HELPER
@@ -363,10 +377,11 @@ export default function PatientAppointment() {
 
             // DISPLAY ONLY THE LOGGED-IN PATIENT'S APPOINTMENTS
 
-            const filteredAppointments = loadedAppointments.filter(item =>
-                String(getAppointmentPatientId(item)) ===
-                String(currentPatientId)
-            );
+            const filteredAppointments = loadedAppointments
+                .map(normalizeAppointment)
+                .filter(item =>
+                    String(getAppointmentPatientId(item)) === String(currentPatientId)
+                );
 
             setAppointments(filteredAppointments);
 
@@ -524,12 +539,9 @@ export default function PatientAppointment() {
         const appointmentData = {
 
             patientId: enteredPatientId,
-
             patientName: patientName,
-
             service: getServiceName(selectedService),
-
-            serviceId: getServiceId(selectedService),
+            serviceId: Number(getServiceId(selectedService)),
 
             price: Number(getServicePrice(selectedService)) || 0,
 
