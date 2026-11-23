@@ -7,8 +7,8 @@ import Sidebar from "./Sidebar.jsx";
 // ==========================================
 
 const BASE_URL = (import.meta.env.VITE_API_URL || "https://dental-system-rzqb.onrender.com")
-    .replace(/\\/+$/, "")
-    .replace(/\\/api$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "");
 
 const PATIENT_API = `${BASE_URL}/api/patients`;
 const SERVICES_API = `${BASE_URL}/api/services`;
