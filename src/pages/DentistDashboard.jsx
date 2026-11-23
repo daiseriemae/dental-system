@@ -5,7 +5,7 @@ import Sidebar from "./Sidebar.jsx";
 const api_url=
     "https://dental-system-rzqb.onrender.com";
 
-const APPOINTMENTS_URL = `${api_url}`;
+const APPOINTMENTS_URL = `${api_url}/api/dentist_appoint`;
 const PATIENTS_URL = `${api_url}/api/patients`;
 const SERVICES_URL = `${api_url}/api/services`;
 

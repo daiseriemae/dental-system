@@ -51,34 +51,6 @@ async function connectDatabase() {
 }
 
 connectDatabase();
-async function connectDatabase() {
-    try {
-        const connection = await db.getConnection();
-
-        console.log("TiDB Cloud Connected Successfully");
-
-        connection.release();
-    } catch (error) {
-        console.error(
-            "TiDB Cloud Connection Failed:",
-            error.message
-        );
-    }
-}
-
-connectDatabase();
-
-async function connectDatabase() {
-    try {
-        const connection = await db.getConnection();
-        console.log("MySQL Connected");
-        connection.release();
-    } catch (error) {
-        console.error("Database connection failed:", error.message);
-    }
-}
-
-connectDatabase();
 
 // ==================================================
 // LOGGING
@@ -311,6 +283,8 @@ app.delete("/api/services/:id", async (req, res) => {
 
 async function createAppointment(req, res) {
     try {
+        console.log("APPOINTMENT REQUEST RECEIVED:");
+        console.log(req.body); 
         const {
             patientId,
             patientName,
@@ -329,6 +303,7 @@ async function createAppointment(req, res) {
                 message: "Please complete all required appointment fields."
             });
         }
+         
 
         // VALIDATE DATE
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
@@ -594,49 +569,34 @@ app.put(
 // DENTIST APPOINTMENT ROUTES — MYSQL
 // ==================================================
 
-// GET ALL APPOINTMENTS FOR DENTIST DASHBOARD
-app.get("/api/dentist_appoint", async (req, res) => {
+// GET ALL PATIENT APPOINTMENTS
+app.get("/api/patient_appoint", async (req, res) => {
     try {
         const [appointments] = await db.query(
-            `SELECT
-                id,
-                patient_id,
-                patient_name,
-                service_id,
-                service,
-                price,
-                dentist,
-                appointment_date,
-                appointment_time,
-                status,
-                notes
-             FROM appointments
-             ORDER BY appointment_date DESC, appointment_time DESC`
+            `SELECT * FROM appointments
+             ORDER BY appointment_date DESC,
+             appointment_time DESC`
         );
 
-        console.log("Dentist appointments retrieved:", appointments.length);
-
         res.json(appointments);
-
     } catch (error) {
-        console.error("Get dentist appointments error:", error.message);
+        console.error("Get appointments error:", error.message);
 
         res.status(500).json({
-            message: "Failed to retrieve dentist appointments.",
+            message: "Failed to retrieve appointments.",
             error: error.message
         });
     }
 });
 
-// CREATE APPOINTMENT
-app.post("/api/dentist_appoint", createAppointment);
+// CREATE PATIENT APPOINTMENT
+app.post("/api/patient_appoint", createAppointment);
 
-// UPDATE APPOINTMENT STATUS
+// UPDATE PATIENT APPOINTMENT STATUS
 app.put(
-    "/api/dentist_appoint/:id/status",
+    "/api/patient_appoint/:id/status",
     updateAppointmentStatus
 );
-
 
 // ==================================================
 // PATIENTS — MYSQL COLUMN-AWARE ROUTES

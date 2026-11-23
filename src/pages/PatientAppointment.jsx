@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import Sidebar from "./Sidebar.jsx";
 
 const BASE_URL = "https://dental-system-rzqb.onrender.com";
+
 const API_URL = `${BASE_URL}/api/patient_appoint`;
 const PATIENT_API = `${BASE_URL}/api/patients`;
 const SERVICES_API = `${BASE_URL}/api/services`;
