@@ -56,12 +56,19 @@ export default function DentistPatientRecord() {
             }
 
             const data = await response.json();
+            const patientRows = Array.isArray(data)
+                ? data
+                : data.patients || data.data || data.results;
 
-            setPatients(data);
+            if (!Array.isArray(patientRows)) {
+                throw new Error("Invalid patient data received.");
+            }
 
-            if (data.length > 0) {
-                setSelectedPatient(data[0]);
-                setNotes(data[0].notes || "");
+            setPatients(patientRows);
+
+            if (patientRows.length > 0) {
+                setSelectedPatient(patientRows[0]);
+                setNotes(patientRows[0].notes || "");
             } else {
                 setSelectedPatient(null);
                 setNotes("");
@@ -93,8 +100,9 @@ export default function DentistPatientRecord() {
 
             const data = await response.json();
 
-            setSelectedPatient(data);
-            setNotes(data.notes || "");
+            const patientData = data.patient || data.data || data;
+            setSelectedPatient(patientData);
+            setNotes(patientData.notes || "");
 
             setEditing(false);
             setEditID("");
