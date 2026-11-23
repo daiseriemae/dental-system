@@ -595,6 +595,95 @@ app.post("/api/patients", async (req, res) => {
     }
 });
 
+// GET PATIENT BY DATABASE ID
+app.get("/api/patients/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+
+        if (!isValidId(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid patient ID."
+            });
+        }
+
+        const [rows] = await db.execute(
+            "SELECT * FROM patients WHERE id = ? LIMIT 1",
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Patient not found."
+            });
+        }
+
+        res.json({
+            success: true,
+            patient: rows[0]
+        });
+    } catch (error) {
+        console.error("GET PATIENT ERROR:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to retrieve patient.",
+            error: error.message
+        });
+    }
+});
+
+// UPDATE PATIENT NOTES
+app.put("/api/patients/:id/notes", async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const notes = req.body?.notes ?? null;
+
+        if (!isValidId(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid patient ID."
+            });
+        }
+
+        const [result] = await db.execute(
+            "UPDATE patients SET notes = ? WHERE id = ?",
+            [notes, id]
+        );
+
+        if (result.affectedRows === 0) {
+            const [rows] = await db.execute(
+                "SELECT id FROM patients WHERE id = ? LIMIT 1",
+                [id]
+            );
+            if (rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Patient not found."
+                });
+            }
+        }
+
+        const [updatedRows] = await db.execute(
+            "SELECT * FROM patients WHERE id = ? LIMIT 1",
+            [id]
+        );
+
+        res.json({
+            success: true,
+            message: "Patient notes updated successfully.",
+            patient: updatedRows[0]
+        });
+    } catch (error) {
+        console.error("UPDATE PATIENT NOTES ERROR:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to update patient notes.",
+            error: error.message
+        });
+    }
+});
+
 // UPDATE PATIENT
 app.put("/api/patients/:id", async (req, res) => {
     try {
